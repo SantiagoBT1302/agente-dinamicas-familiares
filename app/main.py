@@ -1,10 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Cookie, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from app.agent import build_agent, format_history
 from app.config import settings
-from app.db_history import init_chat_table, load_history, save_messages, get_sessions, get_session_messages
+from app.db_history import init_chat_table, load_history, save_messages, get_sessions, get_session_messages, delete_session
 import logging
 import traceback
 import time
@@ -48,7 +48,7 @@ class Message(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    session_id: str | None = None   # None = nueva sesión
+    session_id: str | None = None   # None = nueva sesión (o se usa la cookie)
 
 class ChatResponse(BaseModel):
     response: str
@@ -61,17 +61,30 @@ def health():
     return {"status": "ok", "version": settings.app_version}
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest):
+def chat(
+    request: ChatRequest,
+    response: Response,
+    session_cookie: str | None = Cookie(default=None, alias="session_id"),
+):
     """
     Endpoint principal del agente con persistencia de historial en Databricks.
-    - Si no se envía session_id se crea una nueva sesión.
-    - El historial se carga desde Databricks automáticamente.
+    - Prioridad de session_id: body > cookie > nueva sesión
+    - El session_id se guarda en cookie automáticamente
     """
     if not agent_executor:
         raise HTTPException(status_code=503, detail="Agente no inicializado")
 
-    # Gestionar sesión
-    session_id = request.session_id or str(uuid.uuid4())
+    # Prioridad: session_id en body > cookie > nueva sesión
+    session_id = request.session_id or session_cookie or str(uuid.uuid4())
+
+    # Guardar session_id en cookie (30 días)
+    response.set_cookie(
+        key="session_id",
+        value=session_id,
+        max_age=30 * 24 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+    )
 
     # Cargar historial desde Databricks
     raw_history = load_history(session_id)
@@ -122,6 +135,27 @@ def get_session(session_id: str):
     if not messages:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
     return {"session_id": session_id, "messages": messages}
+
+@app.delete("/sessions/{session_id}")
+def remove_session(session_id: str):
+    """Elimina todos los mensajes de una sesión."""
+    success = delete_session(session_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Error eliminando la sesión")
+    return {"session_id": session_id, "deleted": True}
+
+@app.post("/sessions/new")
+def new_session(response: Response):
+    """Inicia una nueva sesión limpiando la cookie actual."""
+    new_id = str(uuid.uuid4())
+    response.set_cookie(
+        key="session_id",
+        value=new_id,
+        max_age=30 * 24 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+    )
+    return {"session_id": new_id}
 
 @app.get("/tables")
 def list_tables():
