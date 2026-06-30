@@ -9,6 +9,7 @@ import logging
 import traceback
 import time
 import uuid
+import asyncio
 
 logging.basicConfig(level=settings.log_level)
 logger = logging.getLogger(__name__)
@@ -16,16 +17,28 @@ logger = logging.getLogger(__name__)
 # Cache del agente (se construye una sola vez al arrancar)
 agent_executor = None
 
+
+async def _init_db_background():
+    """Inicializa la tabla en Databricks sin bloquear el arranque del servidor."""
+    try:
+        logger.info("Inicializando tabla de sesiones en Databricks (background)...")
+        await asyncio.to_thread(init_chat_table)
+        logger.info("✓ Tabla de sesiones lista.")
+    except Exception as e:
+        logger.error(f"Error inicializando tabla de sesiones: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global agent_executor
     logger.info("Inicializando agente...")
     agent_executor = build_agent()
     logger.info("Agente listo.")
-    logger.info("Inicializando tabla de sesiones en Databricks...")
-    init_chat_table()
+    # DB se inicializa en background para no bloquear el arranque
+    asyncio.create_task(_init_db_background())
     yield
     logger.info("Apagando agente.")
+
 
 app = FastAPI(
     title=settings.app_name,
@@ -63,7 +76,7 @@ def health():
 @app.post("/chat", response_model=ChatResponse)
 def chat(
     request: ChatRequest,
-    response: Response,
+    resp: Response,                  # renombrado 'resp' para no chocar con la variable de salida
     session_cookie: str | None = Cookie(default=None, alias="session_id"),
 ):
     """
@@ -78,7 +91,7 @@ def chat(
     session_id = request.session_id or session_cookie or str(uuid.uuid4())
 
     # Guardar session_id en cookie (30 días)
-    response.set_cookie(
+    resp.set_cookie(
         key="session_id",
         value=session_id,
         max_age=30 * 24 * 60 * 60,
@@ -99,14 +112,14 @@ def chat(
 
         raw_output = result.get("output", "")
         if isinstance(raw_output, list):
-            response = " ".join(
+            answer = " ".join(
                 item.get("text", str(item)) if isinstance(item, dict) else str(item)
                 for item in raw_output
             )
         elif isinstance(raw_output, dict):
-            response = raw_output.get("text", str(raw_output))
+            answer = raw_output.get("text", str(raw_output))
         else:
-            response = str(raw_output) if raw_output else "No se pudo generar una respuesta."
+            answer = str(raw_output) if raw_output else "No se pudo generar una respuesta."
 
     except Exception as e:
         logger.error(f"Error en el agente:\n{traceback.format_exc()}")
@@ -115,18 +128,20 @@ def chat(
     elapsed = round(time.time() - start, 2)
 
     # Guardar par usuario/asistente en Databricks
-    save_messages(session_id, request.message, response, elapsed)
+    save_messages(session_id, request.message, answer, elapsed)
 
     return ChatResponse(
-        response=response,
+        response=answer,
         session_id=session_id,
         elapsed_seconds=elapsed,
     )
+
 
 @app.get("/sessions")
 def list_sessions(limit: int = 50):
     """Lista las sesiones de chat más recientes."""
     return {"sessions": get_sessions(limit)}
+
 
 @app.get("/sessions/{session_id}")
 def get_session(session_id: str):
@@ -136,6 +151,7 @@ def get_session(session_id: str):
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
     return {"session_id": session_id, "messages": messages}
 
+
 @app.delete("/sessions/{session_id}")
 def remove_session(session_id: str):
     """Elimina todos los mensajes de una sesión."""
@@ -144,11 +160,12 @@ def remove_session(session_id: str):
         raise HTTPException(status_code=500, detail="Error eliminando la sesión")
     return {"session_id": session_id, "deleted": True}
 
+
 @app.post("/sessions/new")
-def new_session(response: Response):
+def new_session(resp: Response):
     """Inicia una nueva sesión limpiando la cookie actual."""
     new_id = str(uuid.uuid4())
-    response.set_cookie(
+    resp.set_cookie(
         key="session_id",
         value=new_id,
         max_age=30 * 24 * 60 * 60,
@@ -156,6 +173,7 @@ def new_session(response: Response):
         samesite="lax",
     )
     return {"session_id": new_id}
+
 
 @app.get("/tables")
 def list_tables():
