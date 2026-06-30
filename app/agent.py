@@ -3,9 +3,11 @@ from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.schema import HumanMessage, AIMessage
 from langchain.callbacks.tracers import LangChainTracer
+from langsmith import Client
 from app.tools import TOOLS
 from app.config import settings
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +82,11 @@ def build_agent() -> AgentExecutor:
 
     agent = create_tool_calling_agent(llm, TOOLS, prompt)
 
-    tracer = LangChainTracer(project_name="dinamicas-familiares-eje-cafetero")
+    langsmith_client = Client(api_key=os.getenv("LANGSMITH_API_KEY"))
+    tracer = LangChainTracer(
+        project_name="dinamicas-familiares-eje-cafetero",
+        client=langsmith_client,
+    )
 
     logger.info(f"Agente inicializado con modelo {settings.openai_model}.")
     return AgentExecutor(
