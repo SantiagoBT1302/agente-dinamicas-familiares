@@ -2,6 +2,7 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.schema import HumanMessage, AIMessage
+from langchain.callbacks.tracers import LangChainTracer
 from app.tools import TOOLS
 from app.config import settings
 import logging
@@ -79,6 +80,8 @@ def build_agent() -> AgentExecutor:
 
     agent = create_tool_calling_agent(llm, TOOLS, prompt)
 
+    tracer = LangChainTracer(project_name="dinamicas-familiares-eje-cafetero")
+
     logger.info(f"Agente inicializado con modelo {settings.openai_model}.")
     return AgentExecutor(
         agent=agent,
@@ -89,6 +92,7 @@ def build_agent() -> AgentExecutor:
         handle_parsing_errors=True,
         return_intermediate_steps=False,
         early_stopping_method="generate",
+        callbacks=[tracer],
     )
 
 
