@@ -14,8 +14,8 @@ RUN pip install -r requirements.txt
 # Código fuente
 COPY app/ ./app/
 
-# Puerto
-EXPOSE 8000
+# Puerto (Cloud Run inyecta $PORT, por defecto 8080)
+EXPOSE 8080
 
-# Arranque
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Arranque — usa la variable $PORT que Cloud Run inyecta automáticamente
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
