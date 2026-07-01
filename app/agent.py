@@ -97,7 +97,7 @@ def build_agent() -> AgentExecutor:
         max_execution_time=120,
         handle_parsing_errors=True,
         return_intermediate_steps=False,
-        early_stopping_method="generate",
+        early_stopping_method="force",
         callbacks=[tracer],
     )
 
