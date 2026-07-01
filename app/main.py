@@ -35,13 +35,15 @@ except Exception as e:
     print(f"✗ ERROR importando agent: {e}", flush=True)
     traceback.print_exc()
 
+DB_ERROR = None
 try:
     from app.db_history import load_history, save_messages, get_sessions, get_session_messages, delete_session
     DB_OK = True
     print("✓ DB history importado", flush=True)
 except Exception as e:
     DB_OK = False
-    print(f"✗ ERROR importando db_history: {e}", flush=True)
+    DB_ERROR = f"{type(e).__name__}: {e}"
+    print(f"✗ ERROR importando db_history: {DB_ERROR}", flush=True)
     traceback.print_exc()
     # Stubs para que el servidor funcione aunque falle la BD
     def load_history(session_id): return []
@@ -105,6 +107,7 @@ def health():
         "version": settings.app_version,
         "agent_ok": AGENT_OK,
         "db_ok": DB_OK,
+        "db_error": DB_ERROR,   # muestra el error exacto si db_history falla
     }
 
 @app.post("/chat", response_model=ChatResponse)
