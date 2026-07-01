@@ -106,6 +106,22 @@ def get_sessions(limit: int = 50) -> list[dict]:
         return []
 
 
+def delete_session(session_id: str) -> bool:
+    """Elimina todos los mensajes de una sesión."""
+    try:
+        with _get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"""
+                    DELETE FROM {TABLE}
+                    WHERE session_id = '{session_id}'
+                """)
+        logger.info(f"✓ Sesión {session_id} eliminada.")
+        return True
+    except Exception as e:
+        logger.error(f"Error eliminando sesión {session_id}: {e}")
+        return False
+
+
 def get_session_messages(session_id: str) -> list[dict]:
     """Devuelve todos los mensajes de una sesión para mostrar el chat completo."""
     try:
