@@ -4,40 +4,41 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from app.agent import build_agent, format_history
 from app.config import settings
-from app.db_history import init_chat_table, load_history, save_messages, get_sessions, get_session_messages, delete_session
+from app.db_history import load_history, save_messages, get_sessions, get_session_messages, delete_session
 import logging
 import traceback
 import time
 import uuid
-import asyncio
+import threading
 
 logging.basicConfig(level=settings.log_level)
 logger = logging.getLogger(__name__)
 
-# Cache del agente (se construye una sola vez al arrancar)
-agent_executor = None
+# ── Inicialización lazy del agente ───────────────────────────
+# El agente se construye en la primera solicitud, no al arrancar.
+# Esto garantiza que Cloud Run pueda hacer el health check inmediatamente.
+_agent_executor = None
+_agent_lock = threading.Lock()
 
-
-async def _init_db_background():
-    """Inicializa la tabla en Databricks sin bloquear el arranque del servidor."""
-    try:
-        logger.info("Inicializando tabla de sesiones en Databricks (background)...")
-        await asyncio.to_thread(init_chat_table)
-        logger.info("✓ Tabla de sesiones lista.")
-    except Exception as e:
-        logger.error(f"Error inicializando tabla de sesiones: {e}")
+def get_agent():
+    """Devuelve el agente, construyéndolo la primera vez (thread-safe)."""
+    global _agent_executor
+    if _agent_executor is None:
+        with _agent_lock:
+            if _agent_executor is None:   # double-check tras el lock
+                logger.info("Construyendo agente por primera vez...")
+                _agent_executor = build_agent()
+                logger.info("Agente listo.")
+    return _agent_executor
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global agent_executor
-    logger.info("Inicializando agente...")
-    agent_executor = build_agent()
-    logger.info("Agente listo.")
-    # DB se inicializa en background para no bloquear el arranque
-    asyncio.create_task(_init_db_background())
+    # Startup mínimo: solo registra que la app arrancó.
+    # Todo lo costoso (LangSmith, Databricks) se inicializa en la primera solicitud.
+    logger.info("Aplicación iniciada. Agente y DB se inicializan en primera solicitud.")
     yield
-    logger.info("Apagando agente.")
+    logger.info("Apagando aplicación.")
 
 
 app = FastAPI(
@@ -65,18 +66,19 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
-    session_id: str                 # Siempre se devuelve para que el cliente lo reutilice
+    session_id: str
     elapsed_seconds: float
 
 # ── Endpoints ────────────────────────────────────────────────
 @app.get("/health")
 def health():
+    """Health check — responde inmediatamente sin esperar al agente."""
     return {"status": "ok", "version": settings.app_version}
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(
     request: ChatRequest,
-    resp: Response,                  # renombrado 'resp' para no chocar con la variable de salida
+    resp: Response,
     session_cookie: str | None = Cookie(default=None, alias="session_id"),
 ):
     """
@@ -84,8 +86,7 @@ def chat(
     - Prioridad de session_id: body > cookie > nueva sesión
     - El session_id se guarda en cookie automáticamente
     """
-    if not agent_executor:
-        raise HTTPException(status_code=503, detail="Agente no inicializado")
+    agent_executor = get_agent()
 
     # Prioridad: session_id en body > cookie > nueva sesión
     session_id = request.session_id or session_cookie or str(uuid.uuid4())
@@ -142,15 +143,13 @@ def list_sessions(limit: int = 50):
     """Lista las sesiones de chat más recientes."""
     return {"sessions": get_sessions(limit)}
 
-
 @app.get("/sessions/{session_id}")
 def get_session(session_id: str):
-    """Devuelve el historial completo de una sesión para mostrar el chat."""
+    """Devuelve el historial completo de una sesión."""
     messages = get_session_messages(session_id)
     if not messages:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
     return {"session_id": session_id, "messages": messages}
-
 
 @app.delete("/sessions/{session_id}")
 def remove_session(session_id: str):
@@ -159,7 +158,6 @@ def remove_session(session_id: str):
     if not success:
         raise HTTPException(status_code=500, detail="Error eliminando la sesión")
     return {"session_id": session_id, "deleted": True}
-
 
 @app.post("/sessions/new")
 def new_session(resp: Response):
@@ -173,7 +171,6 @@ def new_session(resp: Response):
         samesite="lax",
     )
     return {"session_id": new_id}
-
 
 @app.get("/tables")
 def list_tables():
