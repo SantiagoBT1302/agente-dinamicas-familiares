@@ -73,15 +73,32 @@ TOTALES EXACTOS VERIFICADOS (usar para validar resultados de consultas):
 
 3. Usa `search_dictionary` cuando no entiendas una columna. El diccionario usa los nombres REALES de las columnas (ej: `"sexo_nacer"`, `"parentesco_jefe_hogar"`, `"codigo_subgrupo"`).
 
-4. **SISBEN IV — estructura crítica (persona-nivel):**
+4. **SISBEN IV — estructura crítica (persona-nivel) y clasificación de pobreza:**
    `silver.sisben` y `bronze.sisben_*` = 1 fila por PERSONA (~1.6M). Para hogares:
    - Total hogares: `COUNT(*) WHERE Jefe_UG = 1`
    - Jefas (Mujer): `WHERE Jefe_UG = 1 AND sexo_persona = 2`
-   - Jefes (Hombre): `WHERE Jefe_UG = 1 AND sexo_persona = 1`
-   - Caldas: `cod_dpto = 17` (numérico, sin comillas)
+   - Caldas: `cod_dpto = 17` (numérico) | Quindío=63 | Risaralda=66
    - ⚠️ `COUNT(*)` sin Jefe_UG = 1 cuenta PERSONAS, no hogares — error grave
-   - Para resumen por municipio: `gold.sisben_municipio` (sin desglose de sexo)
-   - Para desglose por sexo: obligatoriamente `silver.sisben` con `Jefe_UG = 1`
+
+   **CLASIFICACIÓN DE POBREZA SISBEN IV** — columnas DISTINTAS por departamento:
+   - Caldas (`bronze.sisben_caldas`): columna `Grupo` ('A'/'B'/'C'/'D')
+   - Quindío/Risaralda (`bronze.sisben_quindio`, `bronze.sisben_risaralda`): columna `clasificacion_sisben_iv` ('A1'-'D21') — extraer grupo con SUBSTRING(clasificacion_sisben_iv, 1, 1)
+   Significado del Grupo:
+     A = Pobreza extrema | B = Pobreza moderada | C = Vulnerable (no pobre) | D = No pobre
+   Totales por grupo (hogares jefes):
+     Caldas:    A=51.905(20.5%) / B=96.882(38.3%) / C=71.822(28.4%) / D=32.634(12.9%)
+     Quindío:   A=30.838(17.9%) / B=66.075(38.4%) / C=52.129(30.3%) / D=22.861(13.3%)
+     Risaralda: A=52.877(18.2%) / B=100.225(34.6%) / C=96.769(33.4%) / D=39.944(13.8%)
+   Ejemplo consulta pobreza extrema Caldas:
+     SELECT COUNT(*) FROM bronze.sisben_caldas WHERE Jefe_UG = 1 AND Grupo = 'A'
+   Ejemplo pobreza extrema Quindío:
+     SELECT COUNT(*) FROM bronze.sisben_quindio WHERE parentesco_jefe_hogar='Jefe del hogar' AND SUBSTRING(clasificacion_sisben_iv,1,1)='A'
+
+   **POBREZA EN ECV** — usar `silver.ecv_condvidhog` (existe para los 3 departamentos):
+   - `se_considera_pobre`: 'Sí' / 'No' (pobreza subjetiva)
+   - `situacion_ingresos_hogar`: ingresos insuficientes más altos en Quindío (28.2%) que Caldas (15.6%) o Risaralda (23.3%)
+   - ⚠️ Siempre verificar encoding con SELECT DISTINCT antes de filtrar texto en ECV
+   - JOIN con silver.ecv_craccompohog ON DIRECTORIO para cruzar con sexo del jefe
 
 5. **DANE — columnas de parentesco cambian entre años (CRÍTICO):**
    - 2005: usa `parentesco = 'Jefe(a) del hogar'`

@@ -179,7 +179,25 @@ TOTALES EXACTOS (todos jefes de hogar):
     "silver.ecv_fuertra": "ECV 2025 — fuerza de trabajo del jefe de hogar (2.740 registros, mismo DIRECTORIO que craccompohog). Columnas: DIRECTORIO, actividad_semana_pasada, posicion_ocupacional, horas_trabajadas, ingresos_mes_pasado.",
     "silver.ecv_salud": "ECV 2025 — salud del jefe de hogar. Columnas: DIRECTORIO, afiliado_salud, regimen_salud.",
     "silver.ecv_educacion": "ECV 2025 — educación. Columnas: DIRECTORIO, sabe_leer_escribir, nivel_educativo.",
-    "silver.ecv_condvidhog": "ECV 2025 — condiciones de vida del hogar. Columnas: DIRECTORIO, tipo_vivienda, tenencia_vivienda, acceso_servicios.",
+    "silver.ecv_condvidhog": """ECV 2025 — condiciones de vida, pobreza subjetiva e ingresos (3 departamentos, 1 fila = 1 hogar).
+JOIN con craccompohog ON DIRECTORIO. Totales: Caldas=2.736, Quindío=2.791, Risaralda=2.828 hogares.
+COLUMNAS CLAVE DE POBREZA Y BIENESTAR:
+  - se_considera_pobre: 'Sí' / 'No'  ← POBREZA SUBJETIVA
+    ⚠️ Antes de filtrar ejecuta: SELECT DISTINCT se_considera_pobre FROM silver.ecv_condvidhog LIMIT 5
+    (puede haber variación de encoding entre 'Sí' y 'Si' en Databricks)
+  - situacion_ingresos_hogar (3 valores exactos):
+      'Alcanzan para cubrir gastos mínimos'     → Caldas=73.0% / Quindío=60.8% / Risaralda=69.1%
+      'No alcanzan para cubrir gastos mínimos'  → Caldas=15.6% / Quindío=28.2% / Risaralda=23.3%
+      'Cubren más que los gastos mínimos'       → Caldas=11.5% / Quindío=11.0% / Risaralda=7.5%
+    ⚠️ Verificar encoding con SELECT DISTINCT situacion_ingresos_hogar antes de filtrar
+  - recibe_subsidio_gobierno: 'Sí' / 'No'
+  - subsidio_colombia_mayor / subsidio_renta_ciudadana_hambre / subsidio_renta_ciudadana_iva / subsidio_otro
+  - percepcion_economia_hogar_vs_hace_12m: percepción cambio económico vs hace 12 meses
+  - eventos_adversos_hogar: si el hogar sufrió eventos negativos
+  - evento_jefe_perdio_empleo / evento_cierre_negocio / evento_atraso_vivienda / etc.
+  - alim_salto_comida / alim_comio_menos / alim_hogar_sin_alimentos / alim_tuvo_hambre_sin_comer
+  - victima_hecho_delictivo / problemas_barrio
+  - departamento: columna para filtrar por departamento""",
     "silver.ecv_servhog": "ECV 2025 — servicios del hogar (agua, energía, gas, internet). Columnas: DIRECTORIO, tipo_agua, tiene_internet, tiene_gas.",
 
     "silver.sivigila_intsui": """Intento de suicidio individual SIVIGILA 2018 y 2024 (3 departamentos, ~5.4K casos totales).
@@ -216,22 +234,30 @@ TOTALES EXACTOS:
     # ── BRONZE ───────────────────────────────────────────────────────────────
     "bronze.sisben_caldas": """SISBEN IV Caldas — persona-nivel (605.843 personas, 253.243 hogares, 124 columnas).
 Columnas jefe y sexo: Jefe_UG (1.0=jefe, NULL=no jefe) | sexo_persona (1=Hombre, 2=Mujer — NUMÉRICO).
-Para contar hogares: WHERE Jefe_UG = 1.
-Para jefas: WHERE Jefe_UG = 1 AND sexo_persona = 2. Total: 140.358 jefas (55.4%).""",
+CLASIFICACIÓN DE POBREZA (columnas exclusivas de Caldas):
+  - Grupo: 'A'=Pobreza extrema / 'B'=Pobreza moderada / 'C'=Vulnerable / 'D'=No pobre
+  - Clasificacion: 'A1'-'A5' / 'B1'-'B7' / 'C1'-'C18' / 'D1'-'D21' (nivel dentro del grupo)
+TOTALES POR GRUPO (jefes hogar):
+  A (extrema): 51.905 hogares (20.5%) | B (moderada): 96.882 (38.3%) | C (vulnerable): 71.822 (28.4%) | D (no pobre): 32.634 (12.9%)
+Para filtrar por pobreza: WHERE Jefe_UG = 1 AND Grupo = 'A' (extrema) o Grupo IN ('A','B') (pobres)
+Para jefas en pobreza extrema: WHERE Jefe_UG = 1 AND Grupo = 'A' AND sexo_persona = 2""",
 
     "bronze.sisben_quindio": """SISBEN IV Quindío — persona-nivel (366.319 personas, 171.903 hogares, 91 columnas).
 ⚠️ ESTRUCTURA DIFERENTE a bronze.sisben_caldas:
-  - Columna jefe: parentesco_jefe_hogar = 'Jefe del hogar' (TEXTO, no Jefe_UG numérico)
-  - Columna sexo: sexo = 'Hombre' / 'Mujer' (TEXTO, no sexo_persona numérico)
-Para contar hogares: WHERE parentesco_jefe_hogar = 'Jefe del hogar'.
-Para jefas: WHERE parentesco_jefe_hogar = 'Jefe del hogar' AND sexo = 'Mujer'. Total: 102.025 jefas (59.4%).""",
+  - Columna jefe: parentesco_jefe_hogar = 'Jefe del hogar' (TEXTO)
+  - Columna sexo: sexo = 'Hombre' / 'Mujer' (TEXTO)
+  - Columna clasificación: clasificacion_sisben_iv ('A1'-'D21') — para el grupo extrae el primer carácter: SUBSTRING(clasificacion_sisben_iv, 1, 1)
+CLASIFICACIÓN DE POBREZA:
+  A (extrema): 30.838 hogares (17.9%) | B (moderada): 66.075 (38.4%) | C (vulnerable): 52.129 (30.3%) | D (no pobre): 22.861 (13.3%)
+Para filtrar por pobreza: WHERE parentesco_jefe_hogar = 'Jefe del hogar' AND SUBSTRING(clasificacion_sisben_iv, 1, 1) = 'A'""",
 
     "bronze.sisben_risaralda": """SISBEN IV Risaralda — persona-nivel (641.615 personas, 289.815 hogares, 91 columnas).
 ⚠️ MISMA ESTRUCTURA que bronze.sisben_quindio (diferente a bronze.sisben_caldas):
   - Columna jefe: parentesco_jefe_hogar = 'Jefe del hogar' (TEXTO)
   - Columna sexo: sexo = 'Hombre' / 'Mujer' (TEXTO)
-Para contar hogares: WHERE parentesco_jefe_hogar = 'Jefe del hogar'.
-Para jefas: WHERE parentesco_jefe_hogar = 'Jefe del hogar' AND sexo = 'Mujer'. Total: 177.395 jefas (61.2%).""",
+  - Columna clasificación: clasificacion_sisben_iv ('A1'-'D21') — grupo = SUBSTRING(clasificacion_sisben_iv, 1, 1)
+CLASIFICACIÓN DE POBREZA:
+  A (extrema): 52.877 hogares (18.2%) | B (moderada): 100.225 (34.6%) | C (vulnerable): 96.769 (33.4%) | D (no pobre): 39.944 (13.8%)""",
 
     # ── DICCIONARIOS ─────────────────────────────────────────────────────────
     "gold.diccionarios": "Diccionario de datos con nombres REALES de columnas de tablas Silver y Gold. Columnas: fuente, tabla, columna, tipo_dato, tipo_columna, valores_posibles, n_valores_unicos.",
