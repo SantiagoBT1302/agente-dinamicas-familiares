@@ -70,8 +70,14 @@ AÑO EN SIVIGILA:
    - Caldas:        WHERE Jefe_UG = 1 (y sexo_persona=1/2 para hombre/mujer)
    - Quindío/Ris.:  WHERE parentesco_jefe_hogar = 'Jefe del hogar' (y sexo='Hombre'/'Mujer')
    - ⚠️ COUNT(*) sin filtro de jefe cuenta PERSONAS, no hogares
-   Para pobreza: Caldas usa `Grupo` = 'A'/'B'/'C'/'D'; Quindío/Ris. usa SUBSTRING(clasificacion_sisben_iv,1,1)
-   Para los 3 departamentos juntos, usa UNION ALL con las tablas bronze (cada una tiene columnas distintas).
+
+   **CLASIFICACIÓN DE POBREZA — SOLO EN TABLAS BRONZE, NO en silver.sisben:**
+   - `silver.sisben` NO tiene columnas de clasificación de pobreza (Grupo / clasificacion_sisben_iv)
+   - Para pobreza SIEMPRE usa las tablas bronze:
+     * `bronze.sisben_caldas`: columna `Grupo` ('A'=extrema / 'B'=moderada / 'C'=vulnerable / 'D'=no pobre)
+     * `bronze.sisben_quindio`: columna `clasificacion_sisben_iv` → grupo = SUBSTRING(clasificacion_sisben_iv, 1, 1)
+     * `bronze.sisben_risaralda`: columna `clasificacion_sisben_iv` → grupo = SUBSTRING(clasificacion_sisben_iv, 1, 1)
+   - NUNCA consultes silver.sisben para datos de pobreza — devolverá 0 o errores
 
 5. **DANE — columna de parentesco cambia entre años:**
    - 2005: `parentesco` = 'Jefe(a) del hogar'

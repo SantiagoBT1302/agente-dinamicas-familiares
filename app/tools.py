@@ -72,7 +72,7 @@ Columnas: departamento, nombre_municipio, clase_territorio ('Cabecera'/'Rural di
 ⚠️ SIEMPRE SUM(total_hogares), NUNCA COUNT(*). No tiene desglose por sexo del jefe.""",
 
     # ── SILVER — datos individuales ──────────────────────────────────────────
-    "silver.sisben": """SISBEN IV 2026 — nivel de PERSONA (1 fila = 1 persona).
+    "silver.sisben": """SISBEN IV 2026 — nivel de PERSONA (1 fila = 1 persona). Contiene datos de Caldas (cod_dpto=17).
 ⚠️ Para obtener hogares SIEMPRE filtra WHERE Jefe_UG = 1 (cada hogar tiene exactamente 1 jefe).
 Columnas clave:
   - Jefe_UG: 1.0 = jefe/a del hogar | NULL = no es jefe
@@ -81,6 +81,9 @@ Columnas clave:
   - cod_mpio: código DIVIPOLA numérico
   - clase_territorio: 'Cabecera' / 'Rural disperso' / 'Centro poblado'
   - tip_parentesco: 1=Jefe, 2=Cónyuge, 3=Hijo/a
+⛔ NO tiene columnas de clasificación de pobreza (Grupo / clasificacion_sisben_iv).
+   Para análisis de pobreza SIEMPRE usa las tablas BRONZE (bronze.sisben_caldas, bronze.sisben_quindio, bronze.sisben_risaralda).
+   Consultar silver.sisben para pobreza retornará errores o ceros incorrectos.
 Ejemplo para jefaturas femeninas en Caldas:
   SELECT COUNT(*) AS total_hogares,
          SUM(CASE WHEN sexo_persona=2 THEN 1 ELSE 0 END) AS jefas
