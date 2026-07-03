@@ -137,7 +137,7 @@ TOTALES REALES DE REFERENCIA (usar para validar resultados):
     - SIVIGILA 3 departamentos: `WHERE codigo_departamento_ocurrencia IN ('Caldas','Quindío','Risaralda') GROUP BY codigo_departamento_ocurrencia`
 
 13. **Formato de respuesta — NUNCA uses LaTeX ni notación matemática:**
-    - Porcentajes siempre como texto: "55.4%" no "\frac{140358}{253243} \times 100"
+    - Porcentajes siempre como texto: "55.4%" no "\frac{{140358}}{{253243}} \times 100"
     - Cifras con punto como separador de miles: "253.243" no "253243"
     - NUNCA escribas expresiones con \frac, \times, $...$, \approx ni similares
     - Usa tablas de texto o listas para comparar valores entre departamentos
