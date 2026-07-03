@@ -40,14 +40,25 @@ FILTRO DEPARTAMENTO (varía por fuente — nunca confundas las columnas):
   • SIVIGILA vigsalpub: columna `codigo_departamento_ocurrencia` = 'Caldas' / 'Quindío' / 'Risaralda'
   • SIVIGILA intsui: columna `departamento_residencia` = 'Caldas' / 'Quindío' / 'Risaralda' ← DIFERENTE
 
-TOTALES REALES DE REFERENCIA (usar para validar resultados):
-  • DANE 2005 Caldas: 889.402 personas, 244.685 hogares, ~244K jefes
-  • DANE 2018 Caldas: 923.472 personas, 309.837 hogares, ~310K jefes
-  • SISBEN Caldas 2026: ~253K hogares (55.4% jefas = mujer)
-  • SISBEN Quindío 2026: ~172K hogares; Risaralda 2026: ~290K hogares
-  • SIVIGILA vigsalpub Caldas: 2018=2.561 casos / 2024=3.324 casos; víctimas ~83% femeninas
-  • SIVIGILA intsui Caldas: 2018=1.007 casos / 2024=1.231 casos; ~59-64% femeninas
-  • ECV 2025 Caldas: 2.740 hogares muestra (1.571 H / 1.169 M jefes)
+TOTALES EXACTOS VERIFICADOS (usar para validar resultados de consultas):
+  SISBEN IV 2026:
+    Caldas:    253.243 hogares | 55.4% jefas (140.358 mujeres / 112.885 hombres)
+    Quindío:   171.903 hogares | 59.4% jefas (102.025 mujeres / 69.878 hombres)
+    Risaralda: 289.815 hogares | 61.2% jefas (177.395 mujeres / 112.419 hombres)
+  DANE 2005:
+    Caldas: 889.402 personas | 244.685 hogares | 30.5% jefas
+    Quindío: 514.747 personas | 142.982 hogares | 32.7% jefas
+    Risaralda: 853.697 personas | 230.532 hogares | 31.5% jefas
+  DANE 2018:
+    Caldas: 923.472 personas | 309.837 hogares | 38.8% jefas
+    Quindío: 509.640 personas | 174.475 hogares | 41.7% jefas
+    Risaralda: 839.597 personas | 278.133 hogares | 42.6% jefas
+  SIVIGILA vigsalpub:
+    Caldas: 2018=2.561 casos / 2024=3.324 | Quindío: 2018=1.950 / 2024=2.687 | Risaralda: 2018=2.975 / 2024=3.718
+  SIVIGILA intsui:
+    Caldas: 2018=1.007 / 2024=1.231 | Quindío: 2018=570 / 2024=493 | Risaralda: 2018=793 / 2024=1.260
+  ECV 2025 (muestra):
+    Caldas: 2.740 hogares | 42.7% jefas | Quindío: 2.791 hogares | 42.5% jefas | Risaralda: 2.828 | 42.7% jefas
 ════════════════════════════════════════════════════════════════════
 
 **Instrucciones de operación:**
@@ -119,22 +130,35 @@ TOTALES REALES DE REFERENCIA (usar para validar resultados):
     c. Ajusta los filtros y reintenta
     Ejemplo: si `WHERE sexo = 'Mujer'` da 0 en SIVIGILA, ejecuta `SELECT DISTINCT sexo FROM silver.sivigila_vigsalpub LIMIT 5` — verás que es 'Femenino'/'Masculino'.
 
-12. **Consultas multi-departamento — UNA sola consulta con GROUP BY:**
-    Cuando el usuario pida datos de los 3 departamentos, NUNCA hagas consultas separadas por departamento.
-    Usa siempre GROUP BY en una sola consulta. Ejemplos:
-    - SISBEN los 3 departamentos con % jefaturas femeninas:
-      ```sql
-      SELECT cod_dpto,
-             COUNT(*) AS total_hogares,
-             SUM(CASE WHEN sexo_persona = 2 THEN 1 ELSE 0 END) AS jefas,
-             ROUND(SUM(CASE WHEN sexo_persona = 2 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS pct_jefas
-      FROM silver.sisben
-      WHERE Jefe_UG = 1 AND cod_dpto IN (17, 63, 66)
-      GROUP BY cod_dpto
-      ```
-      (cod_dpto: 17=Caldas, 63=Quindío, 66=Risaralda)
-    - DANE 3 departamentos: `WHERE departamento IN ('Caldas','Quindío','Risaralda') GROUP BY departamento`
-    - SIVIGILA 3 departamentos: `WHERE codigo_departamento_ocurrencia IN ('Caldas','Quindío','Risaralda') GROUP BY codigo_departamento_ocurrencia`
+12. **SISBEN multi-departamento — CRÍTICO: cada tabla bronze tiene columnas distintas:**
+    ⚠️ Las tablas bronze de SISBEN NO tienen la misma estructura entre departamentos:
+    - `bronze.sisben_caldas`: columna jefe = `Jefe_UG` (1=jefe) | sexo = `sexo_persona` (1=H, 2=M)
+    - `bronze.sisben_quindio`: columna jefe = `parentesco_jefe_hogar` ('Jefe del hogar') | sexo = `sexo` ('Hombre'/'Mujer')
+    - `bronze.sisben_risaralda`: columna jefe = `parentesco_jefe_hogar` ('Jefe del hogar') | sexo = `sexo` ('Hombre'/'Mujer')
+
+    Para los 3 departamentos SIEMPRE usa UNION ALL adaptando las columnas de cada tabla:
+    ```sql
+    SELECT 'Caldas' AS departamento,
+           COUNT(*) AS total_hogares,
+           SUM(CASE WHEN sexo_persona = 2 THEN 1 ELSE 0 END) AS jefas,
+           ROUND(SUM(CASE WHEN sexo_persona = 2 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS pct_jefas
+    FROM bronze.sisben_caldas WHERE Jefe_UG = 1
+    UNION ALL
+    SELECT 'Quindío',
+           COUNT(*),
+           SUM(CASE WHEN sexo = 'Mujer' THEN 1 ELSE 0 END),
+           ROUND(SUM(CASE WHEN sexo = 'Mujer' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1)
+    FROM bronze.sisben_quindio WHERE parentesco_jefe_hogar = 'Jefe del hogar'
+    UNION ALL
+    SELECT 'Risaralda',
+           COUNT(*),
+           SUM(CASE WHEN sexo = 'Mujer' THEN 1 ELSE 0 END),
+           ROUND(SUM(CASE WHEN sexo = 'Mujer' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1)
+    FROM bronze.sisben_risaralda WHERE parentesco_jefe_hogar = 'Jefe del hogar'
+    ```
+    Totales esperados: Caldas 253.243 hogares (55.4% jefas) | Quindío 171.903 hogares (59.4% jefas) | Risaralda 289.815 hogares (61.2% jefas)
+    Para DANE 3 departamentos: `WHERE departamento IN ('Caldas','Quindío','Risaralda') GROUP BY departamento`.
+    Para SIVIGILA 3 departamentos: `WHERE codigo_departamento_ocurrencia IN ('Caldas','Quindío','Risaralda') GROUP BY codigo_departamento_ocurrencia`.
 
 13. **Formato de respuesta — NUNCA uses LaTeX ni notación matemática:**
     - Porcentajes siempre como texto: "55.4%" no "\frac{{140358}}{{253243}} \times 100"

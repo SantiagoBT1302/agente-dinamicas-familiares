@@ -7,27 +7,43 @@ logger = logging.getLogger(__name__)
 
 # Catálogo de tablas disponibles para el agente
 # ─────────────────────────────────────────────────────────────────────────────
-# VALORES EXACTOS VERIFICADOS EN DATOS REALES (bronze files auditados):
+# VALORES EXACTOS VERIFICADOS EN ARCHIVOS FUENTE (auditoría completa):
 #
 # SEXO:
 #   - DANE (dane_personas): sexo = 'Hombre' / 'Mujer'
-#   - SISBEN (silver.sisben): sexo_persona = 1 (Hombre) / 2 (Mujer)
+#   - SISBEN Caldas (bronze.sisben_caldas): sexo_persona = 1 (Hombre) / 2 (Mujer)  ← NUMÉRICO
+#   - SISBEN Quindío/Risaralda (bronze.sisben_quindio/risaralda): sexo = 'Hombre' / 'Mujer'  ← TEXTO
 #   - SIVIGILA (vigsalpub + intsui): sexo = 'Femenino' / 'Masculino'
 #   - ECV (ecv_craccompohog): sexo_nacer = 'Hombre' / 'Mujer'
 #
 # JEFE DE HOGAR:
 #   - DANE 2005: parentesco = 'Jefe(a) del hogar'
 #   - DANE 2018: parentesco_jefe_hogar = 'Jefe(a) del hogar'  ← columna DISTINTA
-#   - SISBEN: Jefe_UG = 1 (numérico, no texto)
+#   - SISBEN Caldas: Jefe_UG = 1 (numérico)
+#   - SISBEN Quindío/Risaralda: parentesco_jefe_hogar = 'Jefe del hogar'  ← TEXTO, columna DISTINTA
 #   - ECV: todos los registros en ecv_craccompohog son jefes (ORDEN=1 siempre)
 #
 # FILTRO DEPARTAMENTO:
-#   - DANE: codigo_departamento = 'Caldas' / 'Quindío' / 'Risaralda'
+#   - DANE: departamento = 'Caldas' / 'Quindío' / 'Risaralda'
 #   - SIVIGILA vigsalpub: codigo_departamento_ocurrencia = 'Caldas' / 'Quindío' / 'Risaralda'
 #   - SIVIGILA intsui: departamento_residencia = 'Caldas' / 'Quindío' / 'Risaralda'  ← DIFERENTE
-#   - SISBEN: cod_dpto = 17 (Caldas), 63 (Quindío), 66 (Risaralda)  ← NUMÉRICO
-#   - ECV: disponible en datosvivcal via join por DIRECTORIO
+#   - SISBEN silver: cod_dpto = 17 (Caldas), 63 (Quindío), 66 (Risaralda)  ← NUMÉRICO
+#   - ECV: ver columna departamento en cada tabla (una por departamento)
 #
+# TOTALES EXACTOS VERIFICADOS:
+#   SISBEN Caldas:    605.843 personas | 253.243 hogares (Jefe_UG=1) | 55.4% jefas
+#   SISBEN Quindío:   366.319 personas | 171.903 hogares              | 59.4% jefas
+#   SISBEN Risaralda: 641.615 personas | 289.815 hogares              | 61.2% jefas
+#   DANE Caldas 2005:    889.402 personas | 244.685 hogares | 30.5% jefas
+#   DANE Caldas 2018:    923.472 personas | 309.837 hogares | 38.8% jefas
+#   DANE Quindío 2005:   514.747 personas | 142.982 hogares | 32.7% jefas
+#   DANE Quindío 2018:   509.640 personas | 174.475 hogares | 41.7% jefas
+#   DANE Risaralda 2005: 853.697 personas | 230.532 hogares | 31.5% jefas
+#   DANE Risaralda 2018: 839.597 personas | 278.133 hogares | 42.6% jefas
+#   SIVIGILA vigsalpub: Caldas 2018=2.561 / 2024=3.324 | Quindío 2018=1.950 / 2024=2.687 | Risaralda 2018=2.975 / 2024=3.718
+#   SIVIGILA intsui:    Caldas 2018=1.007 / 2024=1.231 | Quindío 2018=570 / 2024=493 | Risaralda 2018=793 / 2024=1.260
+#   ECV craccompohog:   Caldas=2.740 hogares (42.7% jefas) | Quindío=2.791 (42.5%) | Risaralda=2.828 (42.7%)
+# ─────────────────────────────────────────────────────────────────────────────
 # TOTALES REALES VERIFICADOS:
 #   DANE 2005 Caldas: 889.402 personas, 244.685 hogares
 #   DANE 2018 Caldas: 923.472 personas, 309.837 hogares
@@ -38,51 +54,67 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 TABLA_DESCRIPCION = {
     # ── GOLD (preferir siempre) ──────────────────────────────────────────────
-    "gold.jefes_hogar_dane": """Perfil demográfico de jefes/as de hogar DANE Censos 2005 y 2018 — tabla pre-agregada.
+    "gold.jefes_hogar_dane": """Perfil demográfico de jefes/as de hogar DANE Censos 2005 y 2018 — tabla pre-agregada (3 departamentos).
 Columnas: departamento, año_censo ('2005'/'2018' como STRING), codigo_municipio, sexo ('Hombre'/'Mujer'),
 grupo_edad_quinquenal, estado_civil, nivel_educativo, tiene_discapacidad, total_jefes.
-⚠️ SIEMPRE usa SUM(total_jefes), NUNCA COUNT(*).
-Columnas con ñ o tilde SIEMPRE entre backticks: `año_censo`.
-Ejemplo: SELECT sexo, SUM(total_jefes) FROM gold.jefes_hogar_dane
-         WHERE departamento='Caldas' AND `año_censo`='2018' GROUP BY sexo
-Totales 2018: Caldas ~309K jefes totales. Totales 2005: Caldas ~244K jefes.""",
+⚠️ SIEMPRE usa SUM(total_jefes), NUNCA COUNT(*). Columnas con ñ/tilde entre backticks: `año_censo`.
+TOTALES EXACTOS (jefes de hogar):
+  Caldas    2005: 244.685 jefes (30.5% mujeres) | 2018: 309.680 jefes (38.8% mujeres)
+  Quindío   2005: 142.982 jefes (32.7% mujeres) | 2018: 174.231 jefes (41.7% mujeres)
+  Risaralda 2005: 230.532 jefes (31.5% mujeres) | 2018: 277.932 jefes (42.6% mujeres)""",
 
-    "gold.composicion_hogar_dane": """Composición y tamaño de hogares DANE 2005/2018 — tabla pre-agregada por municipio.
+    "gold.composicion_hogar_dane": """Composición y tamaño de hogares DANE 2005/2018 — tabla pre-agregada por municipio (3 departamentos).
 Columnas: departamento, año_censo ('2005'/'2018' STRING), codigo_municipio, area_geografica,
 total_hogares, promedio_personas_hogar, promedio_cuartos, hogares_unipersonales, hogares_5_o_mas.
-⚠️ SIEMPRE usa SUM(total_hogares), NUNCA COUNT(*). Columna `año_censo` requiere backticks.""",
+⚠️ SIEMPRE usa SUM(total_hogares), NUNCA COUNT(*). Columna `año_censo` requiere backticks.
+TOTALES EXACTOS (hogares):
+  Caldas    2005: 244.685 | 2018: 309.837
+  Quindío   2005: 142.982 | 2018: 174.475
+  Risaralda 2005: 230.532 | 2018: 278.133""",
 
-    "gold.jefes_hogar_ecv": """Perfil de jefes/as de hogar ECV 2025 — tabla pre-agregada (muestra ~2.740 hogares en total Eje Cafetero).
+    "gold.jefes_hogar_ecv": """Perfil de jefes/as de hogar ECV 2025 — tabla pre-agregada (muestra representativa, 3 departamentos).
 Columnas: departamento, sexo_nacer ('Hombre'/'Mujer'), estado_civil, total_jefes, edad_promedio.
 ⚠️ SIEMPRE usa SUM(total_jefes), NUNCA COUNT(*).
-La ECV es muestra probabilística (no censo): representativa pero NO comparable en totales absolutos con DANE o SISBEN.""",
+TOTALES EXACTOS (muestra):
+  Caldas:    2.740 hogares | 1.571 hombres / 1.169 mujeres (42.7% jefas)
+  Quindío:   2.791 hogares | 1.605 hombres / 1.186 mujeres (42.5% jefas)
+  Risaralda: 2.828 hogares | 1.619 hombres / 1.209 mujeres (42.7% jefas)
+La ECV es muestra probabilística — NO comparable en volúmenes absolutos con DANE (310K hogares) o SISBEN (253K).""",
 
     "gold.fuerza_trabajo_ecv": """Participación laboral jefes de hogar ECV 2025 — tabla pre-agregada.
 Columnas: departamento, actividad_semana_pasada, posicion_ocupacional, total_personas.
 ⚠️ SIEMPRE usa SUM(total_personas), NUNCA COUNT(*).""",
 
-    "gold.sivigila_intsui": """Casos de intento de suicidio SIVIGILA 2018 y 2024 — tabla pre-agregada.
+    "gold.sivigila_intsui": """Casos de intento de suicidio SIVIGILA 2018 y 2024 — tabla pre-agregada (3 departamentos).
 Columnas: departamento, año ('2018'/'2024' STRING en Gold), municipio_residencia, sexo ('Femenino'/'Masculino'),
 area_geografica, pertenencia_etnica, tipo_seguridad_social, fue_hospitalizado,
-codigo_subgrupo (método: 'Intoxicación por medicamentos'/'Arma cortopunzante'/etc.),
+codigo_subgrupo (método más frecuente: 'Intoxicación por medicamentos'),
 codigo_evento, total_casos, edad_promedio, edad_min, edad_max.
 ⚠️ SIEMPRE usa SUM(total_casos), NUNCA COUNT(*).
-Totales Caldas: 2018=1.007 casos, 2024=1.231 casos. En 2018 y 2024: mujeres son ~64-59% de los casos.""",
+TOTALES EXACTOS:
+  Caldas:    2018=1.007 casos (Femenino=648, Masculino=359) | 2024=1.231 casos (F=729, M=502)
+  Quindío:   2018=570 casos (F=335, M=235)                  | 2024=493 casos (F=310, M=183)
+  Risaralda: 2018=793 casos (F=521, M=272)                  | 2024=1.260 casos (F=832, M=428)""",
 
-    "gold.sivigila_vigsalpub": """Casos de violencia de género e intrafamiliar SIVIGILA 2018 y 2024 — tabla pre-agregada.
+    "gold.sivigila_vigsalpub": """Casos de violencia de género e intrafamiliar SIVIGILA 2018 y 2024 — tabla pre-agregada (3 departamentos).
 Columnas: departamento, año ('2018'/'2024' STRING en Gold), municipio_residencia, sexo ('Femenino'/'Masculino'),
 area_geografica, pertenencia_etnica, tipo_seguridad_social, fue_hospitalizado, condicion_final,
-codigo_subgrupo (tipo violencia: 'Violencia física'/'Violencia sexual'/'Violencia económica / patrimonial'/
-'Acoso sexual'/'Violencia contra niños y adolescentes'/'Abuso sexual'/etc.),
+codigo_subgrupo (tipos: 'Violencia física'/'Violencia sexual'/'Violencia económica / patrimonial'/
+'Acoso sexual'/'Abuso sexual'/'Violencia contra niños y adolescentes'/etc.),
 codigo_evento, total_casos, edad_promedio, edad_min, edad_max.
 ⚠️ SIEMPRE usa SUM(total_casos), NUNCA COUNT(*).
-Totales Caldas: 2018=2.561 casos, 2024=3.324 casos (+30%). Víctimas mayoritariamente femeninas (~83% en 2018).""",
+TOTALES EXACTOS:
+  Caldas:    2018=2.561 (F=2.128, M=433) | 2024=3.324 (F=2.623, M=701)
+  Quindío:   2018=1.950 (F=1.587, M=363) | 2024=2.687 (F=2.143, M=544)
+  Risaralda: 2018=2.975 (F=2.150, M=825) | 2024=3.718 (F=2.712, M=1.006)""",
 
-    "gold.sisben_municipio": """Conteo de hogares SISBEN IV 2026 por municipio — tabla pre-agregada.
+    "gold.sisben_municipio": """Conteo de hogares SISBEN IV 2026 por municipio — tabla pre-agregada (3 departamentos).
 Columnas: departamento, nombre_municipio, clase_territorio ('Cabecera'/'Rural disperso'/'Centro poblado'), total_hogares.
-Cubre 26 municipios vulnerables del Eje Cafetero. Filtra por clase_territorio='Cabecera' para comparar municipios.
-⚠️ SIEMPRE usa SUM(total_hogares), NUNCA COUNT(*). NO tiene desglose por sexo del jefe — usa silver.sisben para eso.
-Totales aprox (todas las clases): Caldas ~253K hogares, Quindío ~172K, Risaralda ~290K.""",
+⚠️ SIEMPRE usa SUM(total_hogares), NUNCA COUNT(*). NO tiene desglose por sexo del jefe — usa bronze para eso.
+TOTALES EXACTOS (todas las clases de territorio):
+  Caldas:    253.243 hogares | 55.4% jefas
+  Quindío:   171.903 hogares | 59.4% jefas
+  Risaralda: 289.815 hogares | 61.2% jefas""",
 
     # ── SILVER (para detalles no disponibles en Gold) ────────────────────────
     "silver.sisben": """SISBEN IV 2026 — datos a nivel de PERSONA (1 fila = 1 persona, ~1.6M filas totales).
@@ -131,15 +163,18 @@ JOIN con silver.dane_personas: ON llave_hogar (2005) o ON 4 columnas compuestas 
 
     "silver.dane_viviendas": "Viviendas censadas DANE 2005 y 2018 (~1.5M registros). Condiciones físicas: materiales, servicios públicos, hacinamiento.",
 
-    "silver.ecv_craccompohog": """ECV 2025 — características del hogar y su jefe/a (2.740 hogares muestra, 1 fila = 1 hogar).
-⚠️ TODOS los registros son jefes de hogar (ORDEN=1 siempre). No hay datos de otros miembros.
+    "silver.ecv_craccompohog": """ECV 2025 — características del hogar y su jefe/a (3 departamentos, 1 fila = 1 hogar).
+⚠️ TODOS los registros son jefes de hogar (ORDEN=1 siempre, parentesco='Jefe/a del hogar' siempre).
 Columnas clave:
-  - sexo_nacer: 'Hombre' / 'Mujer' (sexo del jefe/a de hogar)
-  - DIRECTORIO: ID único del hogar (2.736 únicos en 2.740 filas)
+  - sexo_nacer: 'Hombre' / 'Mujer' (sexo del jefe/a)
+  - DIRECTORIO: ID único del hogar
+  - departamento: 'Caldas' / 'Quindío' / 'Risaralda'
   - estado_civil, nivel_educativo, edad del jefe
-  - parentesco_jefe_hogar: siempre 'Jefe/a del hogar' (no útil para filtrar)
-JOIN con otros módulos ECV: ON DIRECTORIO (+ SECUENCIA_P si hay duplicados)
-Totales Caldas: 1.571 jefes hombres (57.3%), 1.169 jefas mujeres (42.7%)""",
+JOIN con otros módulos ECV: ON DIRECTORIO
+TOTALES EXACTOS (todos jefes de hogar):
+  Caldas:    2.740 hogares | 1.571 hombres (57.3%) / 1.169 mujeres (42.7%)
+  Quindío:   2.791 hogares | 1.605 hombres (57.5%) / 1.186 mujeres (42.5%)
+  Risaralda: 2.828 hogares | 1.619 hombres (57.2%) / 1.209 mujeres (42.7%)""",
 
     "silver.ecv_fuertra": "ECV 2025 — fuerza de trabajo del jefe de hogar (2.740 registros, mismo DIRECTORIO que craccompohog). Columnas: DIRECTORIO, actividad_semana_pasada, posicion_ocupacional, horas_trabajadas, ingresos_mes_pasado.",
     "silver.ecv_salud": "ECV 2025 — salud del jefe de hogar. Columnas: DIRECTORIO, afiliado_salud, regimen_salud.",
@@ -147,37 +182,56 @@ Totales Caldas: 1.571 jefes hombres (57.3%), 1.169 jefas mujeres (42.7%)""",
     "silver.ecv_condvidhog": "ECV 2025 — condiciones de vida del hogar. Columnas: DIRECTORIO, tipo_vivienda, tenencia_vivienda, acceso_servicios.",
     "silver.ecv_servhog": "ECV 2025 — servicios del hogar (agua, energía, gas, internet). Columnas: DIRECTORIO, tipo_agua, tiene_internet, tiene_gas.",
 
-    "silver.sivigila_intsui": """Intento de suicidio individual SIVIGILA 2018 y 2024 (~5.4K casos totales Eje Cafetero).
+    "silver.sivigila_intsui": """Intento de suicidio individual SIVIGILA 2018 y 2024 (3 departamentos, ~5.4K casos totales).
 Columna `año` (INT): 2018 o 2024 (sin comillas). En Gold `año` es STRING.
 Columnas clave:
   - sexo: 'Femenino' / 'Masculino' (NO 'Hombre'/'Mujer')
-  - departamento_residencia: 'Caldas' / 'Quindío' / 'Risaralda' ← filtrar por aquí (NO codigo_departamento_ocurrencia)
+  - departamento_residencia: 'Caldas' / 'Quindío' / 'Risaralda' ← filtrar por aquí
   - municipio_ocurrencia: nombre del municipio
-  - codigo_subgrupo: método — 'Intoxicación por medicamentos' / 'Arma cortopunzante' /
-    'Intoxicación por gases y vapores' / 'Intoxicación por plaguicidas' / 'Arma de fuego' / etc.
+  - codigo_subgrupo: método más frecuente = 'Intoxicación por medicamentos'
   - edad, area_geografica, pertenencia_etnica, gp_discapacidad, fue_hospitalizado
   - Solo 2024: estrato_socioeconomico, gp_migrante, nacionalidad
-Totales Caldas: 2018=1.007 casos, 2024=1.231 casos""",
+TOTALES EXACTOS:
+  Caldas:    2018=1.007 (F=648/M=359) | 2024=1.231 (F=729/M=502)
+  Quindío:   2018=570  (F=335/M=235) | 2024=493  (F=310/M=183)
+  Risaralda: 2018=793  (F=521/M=272) | 2024=1.260 (F=832/M=428)""",
 
-    "silver.sivigila_vigsalpub": """Violencia de género e intrafamiliar individual SIVIGILA 2018 y 2024 (~17.2K casos totales).
+    "silver.sivigila_vigsalpub": """Violencia de género e intrafamiliar individual SIVIGILA 2018 y 2024 (3 departamentos, ~17.2K casos).
 Columna `año` (INT): 2018 o 2024 (sin comillas). En Gold `año` es STRING.
 Columnas clave:
   - sexo: 'Femenino' / 'Masculino' (NO 'Hombre'/'Mujer')
   - codigo_departamento_ocurrencia: 'Caldas' / 'Quindío' / 'Risaralda' ← filtrar por aquí
-    (¡DIFERENTE a intsuical que usa departamento_residencia!)
-  - municipio_ocurrencia, codigo_municipio_residencia: nombre municipio (texto)
-  - codigo_subgrupo: tipo violencia — 'Violencia física' / 'Violencia sexual' /
+    (¡DIFERENTE a intsui que usa departamento_residencia!)
+  - municipio_ocurrencia, codigo_municipio_residencia: texto
+  - codigo_subgrupo: 'Violencia física' / 'Violencia sexual' /
     'Violencia económica / patrimonial' / 'Acoso sexual' / 'Abuso sexual' /
-    'Violencia contra niños y adolescentes' / 'Violencia física extrafamiliar' / etc.
-  - condicion_final: estado del caso
-  - edad, area_geografica, pertenencia_etnica, fue_hospitalizado, tipo_seguridad_social
+    'Violencia contra niños y adolescentes' / etc.
+  - condicion_final, edad, area_geografica, pertenencia_etnica, fue_hospitalizado
   - Solo 2024: estrato_socioeconomico, gp_migrante, gp_desmovilizado, nacionalidad
-Totales Caldas: 2018=2.561 casos, 2024=3.324 casos. ~83% víctimas femeninas.""",
+TOTALES EXACTOS:
+  Caldas:    2018=2.561 (F=2.128/M=433) | 2024=3.324 (F=2.623/M=701)
+  Quindío:   2018=1.950 (F=1.587/M=363) | 2024=2.687 (F=2.143/M=544)
+  Risaralda: 2018=2.975 (F=2.150/M=825) | 2024=3.718 (F=2.712/M=1.006)""",
 
     # ── BRONZE ───────────────────────────────────────────────────────────────
-    "bronze.sisben_caldas": "SISBEN IV Caldas — persona-nivel (605.843 personas, ~253K hogares, 124 cols). Mismas columnas que silver.sisben: Jefe_UG (1=jefe), sexo_persona (1=H, 2=M), cod_dpto=17.",
-    "bronze.sisben_quindio": "SISBEN IV Quindío — persona-nivel (~172K hogares). Mismas columnas que silver.sisben.",
-    "bronze.sisben_risaralda": "SISBEN IV Risaralda — persona-nivel (~290K hogares). Mismas columnas que silver.sisben.",
+    "bronze.sisben_caldas": """SISBEN IV Caldas — persona-nivel (605.843 personas, 253.243 hogares, 124 columnas).
+Columnas jefe y sexo: Jefe_UG (1.0=jefe, NULL=no jefe) | sexo_persona (1=Hombre, 2=Mujer — NUMÉRICO).
+Para contar hogares: WHERE Jefe_UG = 1.
+Para jefas: WHERE Jefe_UG = 1 AND sexo_persona = 2. Total: 140.358 jefas (55.4%).""",
+
+    "bronze.sisben_quindio": """SISBEN IV Quindío — persona-nivel (366.319 personas, 171.903 hogares, 91 columnas).
+⚠️ ESTRUCTURA DIFERENTE a bronze.sisben_caldas:
+  - Columna jefe: parentesco_jefe_hogar = 'Jefe del hogar' (TEXTO, no Jefe_UG numérico)
+  - Columna sexo: sexo = 'Hombre' / 'Mujer' (TEXTO, no sexo_persona numérico)
+Para contar hogares: WHERE parentesco_jefe_hogar = 'Jefe del hogar'.
+Para jefas: WHERE parentesco_jefe_hogar = 'Jefe del hogar' AND sexo = 'Mujer'. Total: 102.025 jefas (59.4%).""",
+
+    "bronze.sisben_risaralda": """SISBEN IV Risaralda — persona-nivel (641.615 personas, 289.815 hogares, 91 columnas).
+⚠️ MISMA ESTRUCTURA que bronze.sisben_quindio (diferente a bronze.sisben_caldas):
+  - Columna jefe: parentesco_jefe_hogar = 'Jefe del hogar' (TEXTO)
+  - Columna sexo: sexo = 'Hombre' / 'Mujer' (TEXTO)
+Para contar hogares: WHERE parentesco_jefe_hogar = 'Jefe del hogar'.
+Para jefas: WHERE parentesco_jefe_hogar = 'Jefe del hogar' AND sexo = 'Mujer'. Total: 177.395 jefas (61.2%).""",
 
     # ── DICCIONARIOS ─────────────────────────────────────────────────────────
     "gold.diccionarios": "Diccionario de datos con nombres REALES de columnas de tablas Silver y Gold. Columnas: fuente, tabla, columna, tipo_dato, tipo_columna, valores_posibles, n_valores_unicos.",
