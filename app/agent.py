@@ -91,10 +91,31 @@ AÑO EN SIVIGILA:
    - Sexo en todos los niveles: 'Femenino' / 'Masculino'
    - ⚠️ NUNCA uses columnas de Silver (codigo_departamento_ocurrencia, departamento_residencia) en tablas Gold
 
-7. **ECV — solo jefes de hogar en craccompohog, 3 departamentos disponibles.**
-   - `sexo_nacer` = 'Hombre' / 'Mujer' | JOIN otros módulos ON DIRECTORIO
-   - Pobreza subjetiva: `se_considera_pobre` en `silver.ecv_condvidhog`
-   - Ingresos: `situacion_ingresos_hogar` en `silver.ecv_condvidhog`
+7. **ECV 2025 — 11 módulos Silver disponibles, todos con columna `departamento`.**
+   JOIN entre módulos: ON DIRECTORIO (llave común a todos).
+   `craccompohog` = módulo base (1 fila por jefe de hogar).
+
+   | Tabla Silver | Temática | Filas aprox. |
+   |---|---|---|
+   | ecv_craccompohog | Composición del hogar — jefes | ~8.400 |
+   | ecv_fuertra | Fuerza de trabajo | ~8.400 |
+   | ecv_salud | Salud | ~8.400 |
+   | ecv_educacion | Educación | ~8.400 |
+   | ecv_condvidhog | Condiciones de vida, pobreza, ingresos | ~8.400 |
+   | ecv_servhog | Servicios del hogar | ~8.400 |
+   | ecv_datosviv | Tipo de vivienda, clase territorial | ~8.350 |
+   | ecv_teccom | Internet en hogar, acceso TIC | ~8.360 |
+   | ecv_atennin5 | Atención integral niños < 5 años | ~770 |
+   | ecv_trainf | Trabajo infantil | ~1.540 |
+   | ecv_condvidhogpro | Subsidios adicionales (muy específico) | ~26 |
+
+   Columnas clave:
+   - `sexo_nacer` = 'Hombre' / 'Mujer' (en craccompohog)
+   - `se_considera_pobre` en ecv_condvidhog
+   - `situacion_ingresos_hogar` en ecv_condvidhog
+   - `internet_en_hogar` en ecv_teccom
+   - `tipo_vivienda`, `clase` en ecv_datosviv
+   - `actividad_semana_pasada` en ecv_trainf
    - ⚠️ Verificar valores reales con SELECT DISTINCT antes de filtrar texto en ECV
 
 8. **UNA SOLA FUENTE por consulta — NO consultes Gold y Silver para la misma pregunta.**
@@ -111,12 +132,20 @@ AÑO EN SIVIGILA:
    - DANE jefes → gold.jefes_hogar_dane → SUM(total_jefes)
    - DANE hogares → gold.composicion_hogar_dane → SUM(total_hogares)
    - SISBEN municipio → gold.sisben_municipio → SUM(total_hogares)
+   - SISBEN jefatura → gold.sisben_jefatura → SUM(total_jefes)
    - Violencia → gold.sivigila_vigsalpub → SUM(total_casos)
    - Suicidio → gold.sivigila_intsui → SUM(total_casos)
    - ECV jefes → gold.jefes_hogar_ecv → SUM(total_jefes)
+   - ECV condiciones vida → gold.condiciones_vida_ecv → SUM(total_hogares)
+   - ECV educación → gold.educacion_ecv → SUM(total_jefes)
 
-   ⚠️ COUNT(*) en Gold cuenta filas (combinaciones de municipio+área+etnia+…), NO casos reales.
-   Ejemplo CORRECTO para desglose de suicidio por sexo en 2024:
+   ⚠️ Gold es una tabla PRE-AGREGADA: cada fila = una combinación única de
+   (municipio, sexo, área, etnia, seguridad, hospitalizado, subgrupo, evento).
+   `total_casos` = COUNT de filas Silver que caen en esa combinación.
+   COUNT(*) en Gold cuenta combinaciones de grupo, NO casos reales.
+   Para obtener casos reales siempre usa SUM(total_casos).
+
+   Ejemplo CORRECTO para desglose de suicidio por sexo en un año:
    ```sql
    SELECT departamento, sexo, SUM(total_casos) AS total
    FROM gold.sivigila_intsui
@@ -124,7 +153,10 @@ AÑO EN SIVIGILA:
    GROUP BY departamento, sexo
    ORDER BY departamento, sexo
    ```
-   Resultado esperado 2024: Caldas F=729/M=502, Quindío F=310/M=183, Risaralda F=832/M=428.
+   Si el resultado de sexo parece incompleto, verifica primero los valores reales:
+   ```sql
+   SELECT DISTINCT sexo FROM gold.sivigila_intsui WHERE año = '2024'
+   ```
 
 9. Incluye LIMIT en todas las consultas sobre Silver y Bronze.
 
@@ -162,11 +194,32 @@ AÑO EN SIVIGILA:
     area_geografica, pertenencia_etnica, tipo_seguridad_social, fue_hospitalizado,
     codigo_subgrupo, codigo_evento, total_casos (INT).
 
-    Números reales 2024 para validar consultas de intsui:
-    - Caldas: total=1.231 (F=729, M=502)
-    - Quindío: total=493 (F=310, M=183)
-    - Risaralda: total=1.260 (F=832, M=428)
-    Si tu consulta devuelve números muy distintos, revisa que usas SUM(total_casos) y WHERE año='2024'.
+    **Tablas Gold adicionales — columnas y patrones de consulta:**
+
+    gold.sisben_jefatura — Jefes de hogar SISBEN por municipio, sexo y grupo de pobreza.
+    Columnas: departamento, nombre_municipio, sexo ('Hombre'/'Mujer'), grupo_sisben ('A'/'B'/'C'/'D'), total_jefes (INT).
+    Ejemplo: SELECT departamento, sexo, grupo_sisben, SUM(total_jefes) FROM gold.sisben_jefatura GROUP BY departamento, sexo, grupo_sisben
+    ⚠️ Cubre los 3 departamentos (Caldas desde Bronze, Quindío/Risaralda desde Silver).
+
+    gold.condiciones_vida_ecv — Condiciones de vida del hogar ECV (pobreza subjetiva, subsidios, seguridad alimentaria).
+    Columnas: departamento, sexo_jefe ('Hombre'/'Mujer'), se_considera_pobre ('Sí'/'No'),
+    situacion_ingresos_hogar (3 valores), recibe_subsidio ('Sí'/'No'),
+    inseguridad_alimentaria ('Sí'/'No'), percepcion_economia (5 valores), total_hogares (INT).
+    Ejemplo: SELECT departamento, se_considera_pobre, SUM(total_hogares) FROM gold.condiciones_vida_ecv GROUP BY departamento, se_considera_pobre
+    ⚠️ recibe_subsidio e inseguridad_alimentaria son derivados de sub-columnas Silver (las columnas contenedor originales eran NULL).
+
+    gold.educacion_ecv — Nivel educativo del jefe de hogar según ECV.
+    Columnas: departamento, sexo_jefe ('Hombre'/'Mujer'), nivel_educativo_alcanzado (13 valores), total_jefes (INT).
+    Ejemplo: SELECT departamento, sexo_jefe, nivel_educativo_alcanzado, SUM(total_jefes) FROM gold.educacion_ecv GROUP BY departamento, sexo_jefe, nivel_educativo_alcanzado ORDER BY total DESC
+
+    ⚠️ Gold sivigila_intsui es PRE-AGREGADA: `total_casos` = COUNT de Silver rows
+    por combinación (municipio+sexo+área+etnia+…). Para totales usa SUM(total_casos).
+    Si el desglose por sexo parece incorrecto, verifica primero:
+    ```sql
+    SELECT DISTINCT sexo, COUNT(*) as filas, SUM(total_casos) as casos
+    FROM gold.sivigila_intsui WHERE año = '2024'
+    GROUP BY sexo
+    ```
 
 14. **Formato de respuesta:**
     - Porcentajes como texto plano: "55.4%" — NUNCA LaTeX (\frac, \times, etc.)
