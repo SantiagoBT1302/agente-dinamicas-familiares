@@ -70,14 +70,24 @@ AÑO EN SIVIGILA:
    - Caldas:        WHERE Jefe_UG = 1 (y sexo_persona=1/2 para hombre/mujer)
    - Quindío/Ris.:  WHERE parentesco_jefe_hogar = 'Jefe del hogar' (y sexo='Hombre'/'Mujer')
    - ⚠️ COUNT(*) sin filtro de jefe cuenta PERSONAS, no hogares
+   - ⚠️ El total de filas en bronze/silver SISBEN incluye TODAS las personas del hogar.
+     Ese total NUNCA es la respuesta a preguntas sobre hogares. Un hogar SISBEN = un jefe de hogar.
 
-   **CLASIFICACIÓN DE POBREZA — SOLO EN TABLAS BRONZE, NO en silver.sisben:**
-   - `silver.sisben` NO tiene columnas de clasificación de pobreza (Grupo / clasificacion_sisben_iv)
-   - Para pobreza SIEMPRE usa las tablas bronze:
-     * `bronze.sisben_caldas`: columna `Grupo` ('A'=extrema / 'B'=moderada / 'C'=vulnerable / 'D'=no pobre)
-     * `bronze.sisben_quindio`: columna `clasificacion_sisben_iv` → grupo = SUBSTRING(clasificacion_sisben_iv, 1, 1)
-     * `bronze.sisben_risaralda`: columna `clasificacion_sisben_iv` → grupo = SUBSTRING(clasificacion_sisben_iv, 1, 1)
-   - NUNCA consultes silver.sisben para datos de pobreza — devolverá 0 o errores
+   **TABLAS GOLD SISBEN — úsalas siempre que estén disponibles:**
+   - Preguntas sobre jefes/hogares SISBEN por municipio, sexo o grupo de pobreza
+     → usa SIEMPRE `gold.sisben_jefatura` con SUM(total_jefes).
+     NUNCA vayas a bronze o silver para esto — gold.sisben_jefatura ya tiene los 3 departamentos.
+   - Preguntas sobre hogares SISBEN por municipio y clase de territorio
+     → usa `gold.sisben_municipio` con SUM(total_hogares).
+   - Solo ve a bronze/silver si necesitas un detalle que Gold no tiene (columnas específicas no agregadas).
+
+   **CLASIFICACIÓN DE POBREZA — usa gold.sisben_jefatura (columna grupo_sisben):**
+   - `gold.sisben_jefatura` tiene columna `grupo_sisben` ('A'/'B'/'C'/'D') con SUM(total_jefes).
+   - Solo si gold.sisben_jefatura no tiene el detalle necesario, ve a bronze:
+     * `bronze.sisben_caldas`: columna `Grupo` — SIEMPRE con WHERE Jefe_UG = 1
+     * `bronze.sisben_quindio`: columna `clasificacion_sisben_iv` — con WHERE parentesco_jefe_hogar = 'Jefe del hogar'
+     * `bronze.sisben_risaralda`: columna `clasificacion_sisben_iv` — con WHERE parentesco_jefe_hogar = 'Jefe del hogar'
+   - NUNCA consultes silver.sisben para datos de pobreza — no tiene esas columnas
 
 5. **DANE — columna de parentesco cambia entre años:**
    - 2005: `parentesco` = 'Jefe(a) del hogar'
@@ -128,7 +138,11 @@ AÑO EN SIVIGILA:
      * Preguntas sobre violencia intrafamiliar/de género → SOLO `gold.sivigila_vigsalpub`. NUNCA consultes `intsui`.
      * NUNCA devuelvas ambas tablas para la misma pregunta — es obligatorio escoger UNA.
 
-   En Gold usa SIEMPRE SUM(columna_total), NUNCA COUNT(*):
+   En Gold usa SIEMPRE SUM(columna_total), NUNCA COUNT(*).
+   COUNT(*) en Gold cuenta combinaciones de grupo (filas de la tabla agregada), NO registros reales.
+   Para obtener el total real siempre usa SUM sobre la columna de conteo de la tabla.
+
+   Columna correcta por tabla Gold:
    - DANE jefes → gold.jefes_hogar_dane → SUM(total_jefes)
    - DANE hogares → gold.composicion_hogar_dane → SUM(total_hogares)
    - SISBEN municipio → gold.sisben_municipio → SUM(total_hogares)
