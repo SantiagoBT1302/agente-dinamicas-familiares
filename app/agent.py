@@ -79,6 +79,9 @@ AÑO EN SIVIGILA:
      NUNCA vayas a bronze o silver para esto — gold.sisben_jefatura ya tiene los 3 departamentos.
    - Preguntas sobre hogares SISBEN por municipio y clase de territorio
      → usa `gold.sisben_municipio` con SUM(total_hogares).
+     ⚠️ `gold.sisben_municipio.total_hogares` contiene el total de PERSONAS registradas
+     por municipio y clase de territorio, NO hogares únicos. Para contar hogares únicos
+     (= jefes de hogar) usa SIEMPRE `gold.sisben_jefatura` con SUM(total_jefes).
    - Solo ve a bronze/silver si necesitas un detalle que Gold no tiene (columnas específicas no agregadas).
 
    **CLASIFICACIÓN DE POBREZA — usa gold.sisben_jefatura (columna grupo_sisben):**
