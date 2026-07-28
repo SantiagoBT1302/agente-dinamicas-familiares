@@ -4,6 +4,7 @@ import traceback
 import time
 import uuid
 import threading
+from langchain_community.callbacks import get_openai_callback
 
 # ── Imports defensivos: si algo falla, el servidor arranca igual
 # y el error aparece en los logs de Cloud Run ──────────────────
@@ -135,10 +136,11 @@ def chat(
 
     start = time.time()
     try:
-        result = agent_executor.invoke({
-            "input": request.message,
-            "chat_history": history,
-        })
+        with get_openai_callback() as cb:
+            result = agent_executor.invoke({
+                "input": request.message,
+                "chat_history": history,
+            })
         raw_output = result.get("output", "")
         if isinstance(raw_output, list):
             answer = " ".join(
@@ -154,6 +156,12 @@ def chat(
         raise HTTPException(status_code=500, detail=str(e))
 
     elapsed = round(time.time() - start, 2)
+    logger.info(
+        f"[COST] session={session_id} | "
+        f"tokens={cb.total_tokens} "
+        f"(prompt={cb.prompt_tokens}, completion={cb.completion_tokens}) | "
+        f"cost=USD ${cb.total_cost:.6f} | elapsed={elapsed}s"
+    )
     save_messages(session_id, request.message, answer, elapsed)
 
     return ChatResponse(response=answer, session_id=session_id, elapsed_seconds=elapsed)
