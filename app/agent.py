@@ -108,19 +108,19 @@ AÑO EN SIVIGILA:
    JOIN entre módulos: ON DIRECTORIO (llave común a todos).
    `craccompohog` = módulo base (1 fila por jefe de hogar).
 
-   | Tabla Silver | Temática | Filas aprox. |
-   |---|---|---|
-   | ecv_craccompohog | Composición del hogar — jefes | ~8.400 |
-   | ecv_fuertra | Fuerza de trabajo | ~8.400 |
-   | ecv_salud | Salud | ~8.400 |
-   | ecv_educacion | Educación | ~8.400 |
-   | ecv_condvidhog | Condiciones de vida, pobreza, ingresos | ~8.400 |
-   | ecv_servhog | Servicios del hogar | ~8.400 |
-   | ecv_datosviv | Tipo de vivienda, clase territorial | ~8.350 |
-   | ecv_teccom | Internet en hogar, acceso TIC | ~8.360 |
-   | ecv_atennin5 | Atención integral niños < 5 años | ~770 |
-   | ecv_trainf | Trabajo infantil | ~1.540 |
-   | ecv_condvidhogpro | Subsidios adicionales (muy específico) | ~26 |
+   | Tabla Silver | Temática |
+   |---|---|
+   | ecv_craccompohog | Composición del hogar — jefes |
+   | ecv_fuertra | Fuerza de trabajo |
+   | ecv_salud | Salud |
+   | ecv_educacion | Educación |
+   | ecv_condvidhog | Condiciones de vida, pobreza, ingresos |
+   | ecv_servhog | Servicios del hogar |
+   | ecv_datosviv | Tipo de vivienda, clase territorial |
+   | ecv_teccom | Internet en hogar, acceso TIC |
+   | ecv_atennin5 | Atención integral niños < 5 años (submuestra: hogares con niños menores de 5) |
+   | ecv_trainf | Trabajo infantil (submuestra: hogares con menores trabajadores) |
+   | ecv_condvidhogpro | Subsidios adicionales (submuestra muy pequeña) |
 
    Columnas clave:
    - `sexo_nacer` = 'Hombre' / 'Mujer' (en craccompohog)
@@ -227,7 +227,7 @@ AÑO EN SIVIGILA:
 
     gold.educacion_ecv — Nivel educativo del jefe de hogar según ECV.
     Columnas: departamento, sexo_jefe ('Hombre'/'Mujer'), nivel_educativo_alcanzado (13 valores), total_jefes (INT).
-    Ejemplo: SELECT departamento, sexo_jefe, nivel_educativo_alcanzado, SUM(total_jefes) FROM gold.educacion_ecv GROUP BY departamento, sexo_jefe, nivel_educativo_alcanzado ORDER BY total DESC
+    Ejemplo: SELECT departamento, sexo_jefe, nivel_educativo_alcanzado, SUM(total_jefes) AS total FROM gold.educacion_ecv GROUP BY departamento, sexo_jefe, nivel_educativo_alcanzado ORDER BY total DESC
 
     ⚠️ Gold sivigila_intsui es PRE-AGREGADA: `total_casos` = COUNT de Silver rows
     por combinación (municipio+sexo+área+etnia+…). Para totales usa SUM(total_casos).
@@ -240,7 +240,7 @@ AÑO EN SIVIGILA:
 
 14. **Formato de respuesta:**
     - Porcentajes como texto plano: "55.4%" — NUNCA LaTeX (\frac, \times, etc.)
-    - Cifras con punto como separador de miles: "253.243"
+    - Cifras con punto como separador de miles: "1.234.567"
     - Para comparar departamentos usa tablas de texto, no ecuaciones.
 
 15. **Cita siempre la fuente al final de cada respuesta, incluyendo el año:**
