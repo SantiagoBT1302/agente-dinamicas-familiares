@@ -44,6 +44,20 @@ FILTRO DEPARTAMENTO — varía por fuente:
   • SIVIGILA vigsalpub:  codigo_departamento_ocurrencia = 'Caldas' / 'Quindío' / 'Risaralda'
   • SIVIGILA intsui:     departamento_residencia = 'Caldas' / 'Quindío' / 'Risaralda' ← DISTINTO
 
+MUNICIPIO — columna y comportamiento varían por fuente:
+  • DANE Gold:     columna `codigo_municipio` — contiene NOMBRES en texto ('Manizales', 'Pereira'…)
+  • SISBEN Gold:   columna `nombre_municipio` — contiene NOMBRES en texto
+  • SIVIGILA Gold: columna `municipio_residencia` — NOMBRES en texto, pero es residencia de la víctima
+                   (puede incluir municipios de otros dptos, países extranjeros y valores como
+                   'Procedencia desconocida' / 'Municipio desconocido (X)' / '(Exterior)').
+                   Para análisis limpio: WHERE municipio_residencia NOT LIKE '%desconocido%'
+                   AND municipio_residencia NOT LIKE '%Exterior%'
+                   AND municipio_residencia NOT LIKE '%Procedencia%'
+  • ECV Gold:      columna `municipio` — NOMBRES en texto ('Manizales', 'Armenia'…)
+  • ECV Silver:    columna `municipio` — NOMBRES en texto, disponible en los 10 módulos
+                   (ecv_datosviv usa `cod_municipio`; los demás usan `municipio`)
+                   Si se necesita detalle municipal ECV, no existe en esta fuente.
+
 CLASIFICACIÓN POBREZA SISBEN IV — columna varía por departamento:
   • Caldas:              columna `Grupo` ('A'/'B'/'C'/'D')
   • Quindío/Risaralda:   columna `clasificacion_sisben_iv` ('A1'-'D21')
@@ -108,15 +122,34 @@ AÑO EN SIVIGILA:
    - 2018: `parentesco_jefe_hogar` = 'Jefe(a) del hogar'
    - `año_censo` siempre entre backticks. Filtro: `` WHERE `año_censo` = '2018' ``
 
+   **`año_censo` en DANE — tipo de dato distinto por capa:**
+   - Silver (`silver.dane_personas`): `año_censo` es INT → WHERE `año_censo` = 2018 (sin comillas en el valor)
+   - Gold (`gold.jefes_hogar_dane`, `gold.composicion_hogar_dane`): `año_censo` es STRING → WHERE `año_censo` = '2018' (con comillas)
+   - En ambos casos el nombre de columna tiene ñ → SIEMPRE entre backticks: `` `año_censo` ``
+
+   **`codigo_municipio` en DANE — contiene NOMBRES, no códigos:**
+   Tanto en Silver como en Gold, `codigo_municipio` es STRING con el nombre del municipio
+   (ej. 'Manizales', 'Viterbo', 'Pereira'). El nombre de columna es engañoso. Úsala directamente
+   para filtrar o agrupar por municipio — el agente SIEMPRE presenta el nombre, nunca un código crudo.
+
    **gold.composicion_hogar_dane — columnas disponibles:**
    - `total_hogares` — total de hogares (SUM para obtener totales)
    - `promedio_personas_hogar` — promedio de personas por hogar
    - `hogares_unipersonales` — hogares de una sola persona
    - `hogares_5_o_mas` — hogares con 5 o más personas
    - `promedio_cuartos` — promedio de cuartos en la vivienda
-   - `area_geografica` — cabecera / centro poblado / rural disperso
-   - `codigo_municipio` — código DIVIPOLA (numérico como STRING). Para ver nombres: SELECT DISTINCT codigo_municipio, departamento FROM gold.composicion_hogar_dane.
-   - `nivel_educativo` en DANE (silver.dane_personas) es distinto de `nivel_educativo_alcanzado` en ECV — usar search_dictionary para confirmar valores en cada fuente.
+   - `area_geografica` — urbano/rural
+
+   **silver.dane_personas — columnas clave para preguntas de detalle:**
+   Filtrar jefes: WHERE `parentesco_jefe_hogar` = 'Jefe(a) del hogar' (2018) o `parentesco` = 'Jefe(a) del hogar' (2005).
+   - `nivel_educativo` — nivel educativo (texto; distinto de `nivel_educativo_alcanzado` en ECV)
+   - `grupo_edad_quinquenal` — grupo etario en quinquenios
+   - `actividad_semana_pasada` — actividad laboral (también existe en ecv_fuertra — son fuentes distintas)
+   - `estado_civil` — estado civil
+   - `tiene_discapacidad` — indicador de discapacidad
+   - `grupo_etnico` — pertenencia étnica
+   - `area_geografica` — cabecera / rural
+   Incluye LIMIT al consultar Silver. Usar search_dictionary para ver valores exactos de cada columna.
 
 6. **SIVIGILA — columnas de departamento distintas entre Silver/Bronze y Gold:**
    - Silver/Bronze vigsalpub (violencia): `codigo_departamento_ocurrencia`
@@ -125,9 +158,10 @@ AÑO EN SIVIGILA:
    - Sexo en todos los niveles: 'Femenino' / 'Masculino'
    - ⚠️ NUNCA uses columnas de Silver (codigo_departamento_ocurrencia, departamento_residencia) en tablas Gold
 
-7. **ECV 2025 — 11 módulos Silver disponibles, todos con columna `departamento`.**
+7. **ECV 2025 — 11 módulos Silver disponibles, todos con columnas `departamento` y `municipio`.**
    JOIN entre módulos: ON DIRECTORIO (llave común a todos).
    `craccompohog` = módulo base (1 fila por jefe de hogar).
+   `ecv_datosviv` usa `cod_municipio`; los demás usan `municipio` (ambos son nombres en texto).
 
    | Tabla Silver | Temática |
    |---|---|
@@ -181,6 +215,11 @@ AÑO EN SIVIGILA:
    - ECV jefes → gold.jefes_hogar_ecv → SUM(total_jefes)
    - ECV condiciones vida → gold.condiciones_vida_ecv → SUM(total_hogares)
    - ECV educación → gold.educacion_ecv → SUM(total_jefes)
+   - ECV fuerza de trabajo → gold.fuerza_trabajo_ecv → SUM(total_personas)
+   - ECV vivienda → gold.vivienda_ecv → SUM(total_hogares)
+   - ECV servicios hogar → gold.servicios_hogar_ecv → SUM(total_hogares)
+   - ECV salud → gold.salud_ecv → SUM(total_jefes)
+   - ECV internet/TIC → gold.tic_ecv → SUM(total_hogares)
 
    ⚠️ Gold es una tabla PRE-AGREGADA: cada fila = una combinación única de dimensiones.
    COUNT(*) en Gold cuenta combinaciones de grupo, NO registros reales.
@@ -288,6 +327,8 @@ AÑO EN SIVIGILA:
     codigo_subgrupo, codigo_evento, total_casos (INT),
     edad_promedio (DOUBLE), edad_min (INT), edad_max (INT).
     → Para preguntas sobre edad de víctimas: usa Gold directamente con edad_promedio, no vayas a Silver.
+    → municipio_residencia = residencia de la víctima (puede ser de otro dpto o país).
+      Para análisis de municipios del Eje Cafetero, excluye valores desconocidos/exteriores.
 
     Columnas Gold sivigila_vigsalpub: igual que intsui más `condicion_final`.
     ⚠️ `condicion_final` existe SOLO en vigsalpub — NO en intsui. Si se consulta en intsui, falla.
@@ -309,15 +350,47 @@ AÑO EN SIVIGILA:
     ⚠️ Cubre los 3 departamentos (Caldas desde Bronze, Quindío/Risaralda desde Silver).
 
     gold.condiciones_vida_ecv — Condiciones de vida del hogar ECV (pobreza subjetiva, subsidios, seguridad alimentaria).
-    Columnas: departamento, sexo_jefe ('Hombre'/'Mujer'), se_considera_pobre ('Sí'/'No'),
-    situacion_ingresos_hogar (3 valores), recibe_subsidio ('Sí'/'No'),
+    Columnas: departamento, municipio (nombre en texto), sexo_jefe ('Hombre'/'Mujer'),
+    se_considera_pobre ('Sí'/'No'), situacion_ingresos_hogar (3 valores), recibe_subsidio ('Sí'/'No'),
     inseguridad_alimentaria ('Sí'/'No'), percepcion_economia (5 valores), total_hogares (INT).
-    Ejemplo: SELECT departamento, se_considera_pobre, SUM(total_hogares) FROM gold.condiciones_vida_ecv GROUP BY departamento, se_considera_pobre
+    Ejemplo: SELECT departamento, municipio, se_considera_pobre, SUM(total_hogares) FROM gold.condiciones_vida_ecv GROUP BY departamento, municipio, se_considera_pobre
     ⚠️ recibe_subsidio e inseguridad_alimentaria son derivados de sub-columnas Silver (las columnas contenedor originales eran NULL).
 
     gold.educacion_ecv — Nivel educativo del jefe de hogar según ECV.
-    Columnas: departamento, sexo_jefe ('Hombre'/'Mujer'), nivel_educativo_alcanzado (13 valores), total_jefes (INT).
-    Ejemplo: SELECT departamento, sexo_jefe, nivel_educativo_alcanzado, SUM(total_jefes) AS total FROM gold.educacion_ecv GROUP BY departamento, sexo_jefe, nivel_educativo_alcanzado ORDER BY total DESC
+    Columnas: departamento, municipio (nombre en texto), sexo_jefe ('Hombre'/'Mujer'),
+    nivel_educativo_alcanzado (13 valores), total_jefes (INT).
+    Ejemplo: SELECT departamento, municipio, sexo_jefe, nivel_educativo_alcanzado, SUM(total_jefes) AS total FROM gold.educacion_ecv GROUP BY departamento, municipio, sexo_jefe, nivel_educativo_alcanzado ORDER BY total DESC
+
+    gold.fuerza_trabajo_ecv — Participación laboral ECV por departamento, municipio, actividad y posición.
+    Columnas: departamento, municipio (nombre en texto), actividad_semana_pasada, posicion_ocupacional, total_personas (INT).
+    → SUM(total_personas) para totales reales.
+
+    gold.vivienda_ecv — Tipo de vivienda y clase territorial ECV.
+    Columnas: departamento, municipio (nombre en texto), clase ('Cabecera'/'Rural disperso'/'Centro poblado'),
+    tipo_vivienda, sexo_jefe ('Hombre'/'Mujer'), total_hogares (INT).
+
+    gold.servicios_hogar_ecv — Cuartos, ingresos y preparación de alimentos ECV.
+    Columnas: departamento, municipio (nombre en texto), sexo_jefe, lugar_preparacion_alimentos,
+    total_hogares (INT), promedio_cuartos (DOUBLE), promedio_personas_hogar (DOUBLE), ingreso_percapita_promedio (DOUBLE).
+    → Las columnas promedio_* ya son promedios — no aplicar AVG() sobre ellas directamente con SUM().
+
+    gold.salud_ecv — Afiliación a salud y cuidado ECV (nivel jefe de hogar).
+    Columnas: departamento, municipio (nombre en texto), sexo_jefe ('Hombre'/'Mujer'),
+    afiliado_sgsss ('Sí'/'No'), regimen_salud, quien_paga_afiliacion,
+    recibe_ayuda_cuidado_otras_personas ('Sí'/'No'), cuidador_principal, cuidador_sexo,
+    cuidador_dejo_trabajar ('Sí'/'No'), total_jefes (INT).
+
+    gold.tic_ecv — Acceso a internet y TIC ECV.
+    Columnas: departamento, municipio (nombre en texto), sexo_jefe ('Hombre'/'Mujer'),
+    internet_en_hogar ('Sí'/'No'), sitios_acceso_internet, internet_en_trabajo ('Sí'/'No'),
+    internet_en_institucion_educativa ('Sí'/'No'), internet_acceso_publico_gratis ('Sí'/'No'),
+    internet_cafe_internet ('Sí'/'No'), total_hogares (INT).
+
+    gold.jefes_hogar_ecv — Jefes de hogar ECV por departamento, municipio, sexo y estado civil.
+    Columnas: departamento, municipio (nombre en texto), sexo_nacer ('Hombre'/'Mujer'),
+    estado_civil, total_jefes (INT), edad_promedio (DOUBLE).
+    → Para filtrar por municipio: WHERE municipio = 'Manizales'
+    → Para edad promedio del jefe ECV: SELECT departamento, municipio, AVG(edad_promedio) FROM gold.jefes_hogar_ecv GROUP BY departamento, municipio
 
     ⚠️ Gold sivigila_intsui es PRE-AGREGADA: `total_casos` = COUNT de Silver rows
     por combinación (municipio+sexo+área+etnia+…). Para totales usa SUM(total_casos).

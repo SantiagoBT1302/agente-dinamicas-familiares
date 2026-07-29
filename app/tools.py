@@ -44,13 +44,49 @@ total_hogares, promedio_personas_hogar, promedio_cuartos, hogares_unipersonales,
 ⚠️ SIEMPRE SUM(total_hogares), NUNCA COUNT(*). Columna `año_censo` requiere backticks.""",
 
     "gold.jefes_hogar_ecv": """Jefes/as de hogar ECV 2025 — tabla pre-agregada, 3 departamentos (muestra probabilística).
-Columnas: departamento, sexo_nacer ('Hombre'/'Mujer'), estado_civil, total_jefes, edad_promedio.
+Columnas: departamento, municipio (nombre en texto), sexo_nacer ('Hombre'/'Mujer'), estado_civil, total_jefes, edad_promedio.
 ⚠️ SIEMPRE SUM(total_jefes), NUNCA COUNT(*).
 La ECV es muestra — sus totales absolutos NO son comparables con DANE ni SISBEN.""",
 
+    "gold.condiciones_vida_ecv": """Condiciones de vida ECV 2025 — tabla pre-agregada, 3 departamentos (muestra probabilística).
+Columnas: departamento, municipio (nombre en texto), sexo_jefe ('Hombre'/'Mujer'),
+se_considera_pobre ('Sí'/'No'), situacion_ingresos_hogar, recibe_subsidio ('Sí'/'No'),
+inseguridad_alimentaria ('Sí'/'No'), percepcion_economia, total_hogares.
+⚠️ SIEMPRE SUM(total_hogares), NUNCA COUNT(*). Pobreza = subjetiva (autoreporte).""",
+
+    "gold.educacion_ecv": """Nivel educativo del jefe de hogar ECV 2025 — tabla pre-agregada, 3 departamentos (muestra probabilística).
+Columnas: departamento, municipio (nombre en texto), sexo_jefe ('Hombre'/'Mujer'),
+nivel_educativo_alcanzado, total_jefes.
+⚠️ SIEMPRE SUM(total_jefes), NUNCA COUNT(*).""",
+
     "gold.fuerza_trabajo_ecv": """Participación laboral ECV 2025 — tabla pre-agregada, 3 departamentos.
-Columnas: departamento, actividad_semana_pasada, posicion_ocupacional, total_personas.
+Columnas: departamento, municipio (nombre en texto), actividad_semana_pasada, posicion_ocupacional, total_personas.
 ⚠️ SIEMPRE SUM(total_personas), NUNCA COUNT(*).""",
+
+    "gold.vivienda_ecv": """Tipo de vivienda y clase territorial ECV 2025 — tabla pre-agregada, 3 departamentos.
+Columnas: departamento, municipio (nombre en texto), clase ('Cabecera'/'Rural disperso'/'Centro poblado'),
+tipo_vivienda, sexo_jefe ('Hombre'/'Mujer'), total_hogares.
+⚠️ SIEMPRE SUM(total_hogares), NUNCA COUNT(*).""",
+
+    "gold.servicios_hogar_ecv": """Servicios e ingresos del hogar ECV 2025 — tabla pre-agregada, 3 departamentos.
+Columnas: departamento, municipio (nombre en texto), sexo_jefe ('Hombre'/'Mujer'),
+lugar_preparacion_alimentos, total_hogares,
+promedio_cuartos (DOUBLE), promedio_personas_hogar (DOUBLE), ingreso_percapita_promedio (DOUBLE).
+⚠️ SIEMPRE SUM(total_hogares) para conteos; las columnas promedio_* ya son promedios calculados.""",
+
+    "gold.salud_ecv": """Afiliación a salud y cuidado ECV 2025 — tabla pre-agregada (nivel jefe), 3 departamentos.
+Columnas: departamento, municipio (nombre en texto), sexo_jefe ('Hombre'/'Mujer'),
+afiliado_sgsss ('Sí'/'No'), regimen_salud ('Contributivo'/'Subsidiado'/…),
+quien_paga_afiliacion, recibe_ayuda_cuidado_otras_personas ('Sí'/'No'),
+cuidador_principal, cuidador_sexo, cuidador_dejo_trabajar ('Sí'/'No'), total_jefes.
+⚠️ SIEMPRE SUM(total_jefes), NUNCA COUNT(*). Solo registra el jefe/a del hogar.""",
+
+    "gold.tic_ecv": """Acceso a internet y TIC ECV 2025 — tabla pre-agregada, 3 departamentos.
+Columnas: departamento, municipio (nombre en texto), sexo_jefe ('Hombre'/'Mujer'),
+internet_en_hogar ('Sí'/'No'), sitios_acceso_internet,
+internet_en_trabajo ('Sí'/'No'), internet_en_institucion_educativa ('Sí'/'No'),
+internet_acceso_publico_gratis ('Sí'/'No'), internet_cafe_internet ('Sí'/'No'), total_hogares.
+⚠️ SIEMPRE SUM(total_hogares), NUNCA COUNT(*).""",
 
     "gold.sivigila_intsui": """Intentos de suicidio SIVIGILA 2018 y 2024 — tabla pre-agregada, 3 departamentos.
 Columnas: departamento, año (STRING: '2018'/'2024'), municipio_residencia, sexo ('Femenino'/'Masculino'),
@@ -113,10 +149,12 @@ Columnas clave:
   - sexo_nacer: 'Hombre' / 'Mujer'
   - DIRECTORIO: ID único del hogar (usar para JOIN con otros módulos ECV)
   - departamento: 'Caldas' / 'Quindío' / 'Risaralda'
-  - estado_civil, nivel_educativo, edad, satisfaccion_ingreso
+  - municipio: nombre en texto ('Manizales', 'Armenia', 'Pereira'…)
+  - estado_civil, nivel_educativo, edad_anos, satisfaccion_ingreso
 JOIN con otros módulos ECV: ON DIRECTORIO""",
 
     "silver.ecv_condvidhog": """ECV 2025 — condiciones de vida y percepción de pobreza. 1 fila = 1 hogar. 3 departamentos.
+Columnas clave adicionales: municipio (nombre en texto), departamento.
 JOIN con craccompohog ON DIRECTORIO.
 Columnas clave de pobreza y bienestar:
   - se_considera_pobre: 'Sí' / 'No'  ← pobreza subjetiva
@@ -130,10 +168,10 @@ Columnas clave de pobreza y bienestar:
   - alim_salto_comida / alim_comio_menos / alim_hogar_sin_alimentos / alim_tuvo_hambre_sin_comer
   - departamento: 'Caldas' / 'Quindío' / 'Risaralda'""",
 
-    "silver.ecv_fuertra": "ECV 2025 — fuerza de trabajo. 3 departamentos. Columnas: DIRECTORIO, departamento, actividad_semana_pasada, posicion_ocupacional, horas_trabajadas, ingresos_mes_pasado.",
-    "silver.ecv_salud": "ECV 2025 — salud. 3 departamentos. Columnas: DIRECTORIO, departamento, afiliado_salud, regimen_salud.",
-    "silver.ecv_educacion": "ECV 2025 — educación. 3 departamentos. Columnas: DIRECTORIO, departamento, sabe_leer_escribir, nivel_educativo.",
-    "silver.ecv_servhog": "ECV 2025 — servicios del hogar. 3 departamentos. Columnas: DIRECTORIO, departamento, tipo_agua, tiene_internet, tiene_gas.",
+    "silver.ecv_fuertra": "ECV 2025 — fuerza de trabajo. 3 departamentos. Columnas: DIRECTORIO, departamento, municipio, actividad_semana_pasada, posicion_ocupacional, horas_trabajadas, ingresos_mes_pasado.",
+    "silver.ecv_salud": "ECV 2025 — salud. 3 departamentos. Columnas: DIRECTORIO, departamento, municipio, afiliado_sgsss, regimen_salud, quien_paga_afiliacion, num_orden_persona.",
+    "silver.ecv_educacion": "ECV 2025 — educación. 3 departamentos. Columnas: DIRECTORIO, ORDEN, departamento, municipio, sabe_leer_escribir, nivel_educativo_alcanzado.",
+    "silver.ecv_servhog": "ECV 2025 — servicios del hogar. 3 departamentos. Columnas: DIRECTORIO, departamento, municipio, num_cuartos_hogar, cant_personas_hogar, ingreso_percapita, lugar_preparacion_alimentos.",
 
     "silver.sivigila_intsui": """Intentos de suicidio individuales SIVIGILA 2018 y 2024. 3 departamentos.
 Columna `año` (INT, sin comillas): 2018 o 2024.
