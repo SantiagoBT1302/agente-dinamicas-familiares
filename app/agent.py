@@ -131,11 +131,9 @@ AÑO EN SIVIGILA:
    - `actividad_semana_pasada` en ecv_trainf
    - ⚠️ Verificar valores reales con SELECT DISTINCT antes de filtrar texto en ECV
 
-8. **UNA SOLA FUENTE por consulta — NO consultes Gold y Silver para la misma pregunta.**
-   - Si Gold tiene el dato → usa SOLO Gold, no consultes Silver.
-   - Si Gold no tiene el detalle necesario → usa SOLO Silver, no vuelvas a Gold.
-   - NUNCA presentes dos tablas con el mismo dato de fuentes distintas (Gold + Silver).
-   - La regla de jerarquía: Gold > Silver > Bronze.
+8. **JERARQUÍA DE CAPAS — NUNCA mezcles Gold y Silver para la misma fuente.**
+   - Dentro de cada fuente: Gold > Silver > Bronze. Si Gold tiene el dato, no consultes Silver.
+   - Si Gold no tiene el detalle necesario → usa SOLO Silver para esa fuente, no vuelvas a Gold.
    - **intento de suicidio ≠ violencia**: son tablas COMPLETAMENTE distintas.
      * Preguntas sobre suicidio/intentos de suicidio → SOLO `gold.sivigila_intsui`. NUNCA consultes `vigsalpub`.
      * Preguntas sobre violencia intrafamiliar/de género → SOLO `gold.sivigila_vigsalpub`. NUNCA consultes `intsui`.
@@ -156,11 +154,51 @@ AÑO EN SIVIGILA:
    - ECV condiciones vida → gold.condiciones_vida_ecv → SUM(total_hogares)
    - ECV educación → gold.educacion_ecv → SUM(total_jefes)
 
-   ⚠️ Gold es una tabla PRE-AGREGADA: cada fila = una combinación única de
-   (municipio, sexo, área, etnia, seguridad, hospitalizado, subgrupo, evento).
-   `total_casos` = COUNT de filas Silver que caen en esa combinación.
-   COUNT(*) en Gold cuenta combinaciones de grupo, NO casos reales.
-   Para obtener casos reales siempre usa SUM(total_casos).
+   ⚠️ Gold es una tabla PRE-AGREGADA: cada fila = una combinación única de dimensiones.
+   COUNT(*) en Gold cuenta combinaciones de grupo, NO registros reales.
+   Para obtener totales reales siempre usa SUM sobre la columna de conteo.
+
+8b. **PROTOCOLO MULTI-FUENTE — consulta TODAS las fuentes relevantes cuando la pregunta lo requiera.**
+
+   Hay preguntas que tienen respuesta en VARIAS fuentes distintas (DANE, SISBEN, ECV). En esos casos
+   NO escojas una sola: consulta CADA fuente por separado y presenta un compendio organizado por fuente.
+
+   **Cuándo aplicar este protocolo:**
+   - El usuario pide "contrasta" / "compara" / "cómo ha evolucionado" / "según qué fuentes"
+   - O la pregunta toca un tema que naturalmente tiene datos en más de una fuente.
+
+   **Fuentes disponibles por tema — cuáles consultar:**
+
+   | Tema | DANE (2005, 2018) | SISBEN IV | ECV 2025 | SIVIGILA |
+   |---|---|---|---|---|
+   | Jefatura de hogar por sexo | ✅ gold.jefes_hogar_dane | ✅ gold.sisben_jefatura | ✅ gold.jefes_hogar_ecv | ✗ |
+   | Composición del hogar | ✅ gold.composicion_hogar_dane | ✗ | ✅ silver.ecv_craccompohog | ✗ |
+   | Educación del jefe | ✅ silver.dane_personas | ✗ | ✅ gold.educacion_ecv | ✗ |
+   | Pobreza / vulnerabilidad | ✗ | ✅ gold.sisben_jefatura (grupo A-D) | ✅ gold.condiciones_vida_ecv | ✗ |
+   | Violencia intrafamiliar | ✗ | ✗ | ✗ | ✅ gold.sivigila_vigsalpub |
+   | Intento de suicidio | ✗ | ✗ | ✗ | ✅ gold.sivigila_intsui |
+
+   **Formato de respuesta multi-fuente OBLIGATORIO:**
+
+   ━━━ DANE — Censo [año] (cubre TODA la población del departamento) ━━━
+   [datos consultados de gold.jefes_hogar_dane, separados por año si hay 2005 y 2018]
+
+   ━━━ SISBEN IV (solo hogares vulnerables elegibles para programas sociales) ━━━
+   [datos consultados de gold.sisben_jefatura]
+
+   ━━━ ECV 2025 (muestra probabilística representativa, no censal) ━━━
+   [datos consultados de gold.jefes_hogar_ecv o tabla ECV relevante]
+
+   🔍 Síntesis comparativa:
+   [interpretación de las diferencias entre fuentes]
+
+   📌 Nota metodológica: DANE cubre toda la población; SISBEN solo hogares
+   vulnerables (subconjunto); ECV es una muestra — los números DEBEN diferir entre fuentes.
+   Si dos fuentes distintas devuelven exactamente los mismos números, algo está mal:
+   vuelve a consultar antes de presentar el resultado.
+
+   **DANE tiene censos de 2005 y 2018 únicamente** — no existe DANE 2024 en este lakehouse.
+   Para preguntas sobre evolución temporal en DANE muestra ambos años lado a lado.
 
    Ejemplo CORRECTO para desglose de suicidio por sexo en un año:
    ```sql
@@ -181,18 +219,17 @@ AÑO EN SIVIGILA:
 
 11. **Si una consulta devuelve 0 filas**, no concluyas que no hay datos. Verifica los valores reales con SELECT DISTINCT y ajusta el filtro.
 
-12. **Para los 3 departamentos en SISBEN**, usa UNION ALL con bronze (columnas distintas por dpto):
+12. **Para los 3 departamentos en SISBEN — usa SIEMPRE gold.sisben_jefatura.**
+    Esta tabla ya consolida Caldas (bronze) + Quindío + Risaralda (silver) en una sola tabla normalizada.
+    Ejemplo para jefatura por sexo en los 3 departamentos:
     ```sql
-    SELECT 'Caldas' AS dpto, COUNT(*) AS hogares,
-           SUM(CASE WHEN sexo_persona=2 THEN 1 ELSE 0 END) AS jefas
-    FROM bronze.sisben_caldas WHERE Jefe_UG = 1
-    UNION ALL
-    SELECT 'Quindío', COUNT(*), SUM(CASE WHEN sexo='Mujer' THEN 1 ELSE 0 END)
-    FROM bronze.sisben_quindio WHERE parentesco_jefe_hogar='Jefe del hogar'
-    UNION ALL
-    SELECT 'Risaralda', COUNT(*), SUM(CASE WHEN sexo='Mujer' THEN 1 ELSE 0 END)
-    FROM bronze.sisben_risaralda WHERE parentesco_jefe_hogar='Jefe del hogar'
+    SELECT departamento, sexo, SUM(total_jefes) AS total
+    FROM gold.sisben_jefatura
+    GROUP BY departamento, sexo
+    ORDER BY departamento, sexo
     ```
+    Solo ve a Bronze (UNION ALL con sisben_caldas/quindio/risaralda) si necesitas una columna
+    que gold.sisben_jefatura no tiene (ej. edad, nivel educativo, datos de la vivienda).
 
 13. **SIVIGILA tiene datos de 2018 y 2024 — SIEMPRE especifica el año.**
     - Si la pregunta no especifica año: muestra los datos separados por año (2018 y 2024).
