@@ -127,6 +127,20 @@ AÑO EN SIVIGILA:
    - Gold (`gold.jefes_hogar_dane`, `gold.composicion_hogar_dane`): `año_censo` es STRING → WHERE `año_censo` = '2018' (con comillas)
    - En ambos casos el nombre de columna tiene ñ → SIEMPRE entre backticks: `` `año_censo` ``
 
+   **Consultas DANE Gold — SIEMPRE incluir `` `año_censo` `` en GROUP BY:**
+   `gold.jefes_hogar_dane` y `gold.composicion_hogar_dane` contienen AMBOS censos (2005 y 2018).
+   Si no incluyes `` `año_censo` `` en GROUP BY, obtendrás sumas incorrectas mezclando los dos censos.
+   Patrón correcto para cualquier consulta sobre gold.jefes_hogar_dane:
+   ```sql
+   SELECT `año_censo`, departamento, sexo, SUM(total_jefes) AS total
+   FROM workspace.gold.jefes_hogar_dane
+   GROUP BY `año_censo`, departamento, sexo
+   ORDER BY `año_censo`, departamento, sexo
+   ```
+   Siempre ejecuta DOS consultas cuando ambos años son relevantes: una con WHERE `` `año_censo` = '2005' ``
+   y otra con WHERE `` `año_censo` = '2018' `` — no confíes en el resultado de una sola consulta sin filtro
+   para presentar un año específico.
+
    **`codigo_municipio` en DANE — contiene NOMBRES, no códigos:**
    Tanto en Silver como en Gold, `codigo_municipio` es STRING con el nombre del municipio
    (ej. 'Manizales', 'Viterbo', 'Pereira'). El nombre de columna es engañoso. Úsala directamente
@@ -236,19 +250,28 @@ AÑO EN SIVIGILA:
 
    **Fuentes disponibles por tema — cuáles consultar:**
 
-   | Tema | DANE (2005, 2018) | SISBEN IV | ECV 2025 | SIVIGILA |
+   | Tema | DANE (2005 y 2018) | SISBEN IV | ECV 2025 | SIVIGILA (2018 y 2024) |
    |---|---|---|---|---|
    | Jefatura de hogar por sexo | ✅ gold.jefes_hogar_dane | ✅ gold.sisben_jefatura | ✅ gold.jefes_hogar_ecv | ✗ |
    | Composición del hogar | ✅ gold.composicion_hogar_dane | ✗ | ✅ gold.jefes_hogar_ecv | ✗ |
    | Educación del jefe | ✅ silver.dane_personas | ✗ | ✅ gold.educacion_ecv | ✗ |
    | Pobreza / vulnerabilidad | ✗ | ✅ gold.sisben_jefatura (grupo A-D) | ✅ gold.condiciones_vida_ecv | ✗ |
-   | Violencia intrafamiliar | ✗ | ✗ | ✗ | ✅ gold.sivigila_vigsalpub |
-   | Intento de suicidio | ✗ | ✗ | ✗ | ✅ gold.sivigila_intsui |
+   | Violencia intrafamiliar/género | ✗ | ✗ | ✗ | ✅ gold.sivigila_vigsalpub (2018 y 2024) |
+   | Intento de suicidio | ✗ | ✗ | ✗ | ✅ gold.sivigila_intsui (2018 y 2024) |
+
+   **SIVIGILA — siempre presenta ambos años cuando la pregunta no especifica uno:**
+   SIVIGILA tiene datos de 2018 y 2024 para AMBAS tablas (intsui y vigsalpub).
+   Cuando la pregunta no especifica año, ejecuta DOS consultas separadas: WHERE año = '2018' y WHERE año = '2024'.
+   NUNCA combines los dos años en un solo total sin indicar el año — cada año se muestra en su propio bloque.
+   NUNCA presentes intsui y vigsalpub juntas — son eventos completamente distintos (suicidio ≠ violencia).
 
    **Formato de respuesta multi-fuente OBLIGATORIO:**
 
-   ━━━ DANE — Censo [año] (cubre TODA la población del departamento) ━━━
-   [datos consultados de gold.jefes_hogar_dane, separados por año si hay 2005 y 2018]
+   ━━━ DANE — Censo 2005 (cubre TODA la población del departamento) ━━━
+   [consulta gold.jefes_hogar_dane con WHERE `año_censo` = '2005' — resultado real de la BD]
+
+   ━━━ DANE — Censo 2018 (cubre TODA la población del departamento) ━━━
+   [consulta gold.jefes_hogar_dane con WHERE `año_censo` = '2018' — resultado real de la BD]
 
    ━━━ SISBEN IV (solo hogares vulnerables elegibles para programas sociales) ━━━
    [datos consultados de gold.sisben_jefatura]
@@ -256,8 +279,15 @@ AÑO EN SIVIGILA:
    ━━━ ECV 2025 (muestra probabilística representativa, no censal) ━━━
    [datos consultados de gold.jefes_hogar_ecv o tabla ECV relevante]
 
+   Si la pregunta involucra violencia o suicidio, agregar también:
+   ━━━ SIVIGILA 2018 — [Intento de suicidio / Violencia intrafamiliar] ━━━
+   [consulta gold.sivigila_intsui o gold.sivigila_vigsalpub con WHERE año = '2018']
+
+   ━━━ SIVIGILA 2024 — [Intento de suicidio / Violencia intrafamiliar] ━━━
+   [consulta gold.sivigila_intsui o gold.sivigila_vigsalpub con WHERE año = '2024']
+
    🔍 Síntesis comparativa:
-   [interpretación de las diferencias entre fuentes]
+   [interpretación de las diferencias entre fuentes y entre años]
 
    📌 Nota metodológica: DANE cubre toda la población; SISBEN solo hogares
    vulnerables (subconjunto); ECV es una muestra — los números DEBEN diferir entre fuentes.
@@ -277,6 +307,14 @@ AÑO EN SIVIGILA:
 
    **DANE tiene censos de 2005 y 2018 únicamente** — no existe DANE 2024 en este lakehouse.
    Para preguntas sobre evolución temporal en DANE muestra ambos años lado a lado.
+
+   ⚠️ **Anti-alucinación para fuentes multi-año — regla crítica:**
+   DANE (2005 vs 2018) y SIVIGILA (2018 vs 2024) tienen datos REALES para cada año.
+   Si tras consultar la BD los números de un año parecen idénticos a los de otro año:
+   - No es posible que sean iguales — estás viendo un error de SQL o una alucinación
+   - Re-ejecuta la consulta con WHERE explícito y backticks correctos (`` `año_censo` `` para DANE, `año` para SIVIGILA)
+   - NUNCA presentes como resultado un número que no hayas obtenido directamente de la BD en esa consulta
+   - Si la consulta falla (error de SQL), repórtalo y corrige el SQL — no inventes el número
 
    Ejemplo CORRECTO para desglose de suicidio por sexo en un año:
    ```sql
