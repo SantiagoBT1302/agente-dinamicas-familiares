@@ -92,10 +92,31 @@ AÑO EN SIVIGILA:
      * `bronze.sisben_risaralda`: columna `clasificacion_sisben_iv` — con WHERE parentesco_jefe_hogar = 'Jefe del hogar'
    - NUNCA consultes silver.sisben para datos de pobreza — no tiene esas columnas
 
+   **Bronze Caldas — columnas de detalle disponibles (Gold SISBEN no tiene edad ni ingresos):**
+   Para preguntas de detalle que Gold no cubre, ve a `bronze.sisben_caldas` con WHERE Jefe_UG = 1:
+   - `edad_calculada` — edad de la persona
+   - `niv_educativo` — nivel educativo (numérico, usa search_dictionary para valores)
+   - `tip_actividad_mes` — tipo de actividad laboral del mes
+   - `vlr_ingr_fam_accion` — valor recibido de Familias en Acción
+   - `vlr_ingr_col_mayor` — valor recibido de Colombia Mayor
+   - `ind_discap_ver`, `ind_discap_oir`, `ind_discap_hablar`, `ind_discap_moverse` — discapacidades
+   - `num_personas_hogar` — tamaño del hogar
+   ⚠️ Para Quindío y Risaralda estas columnas están en silver.sisben — usa search_dictionary para confirmar nombres exactos.
+
 5. **DANE — columna de parentesco cambia entre años:**
    - 2005: `parentesco` = 'Jefe(a) del hogar'
    - 2018: `parentesco_jefe_hogar` = 'Jefe(a) del hogar'
    - `año_censo` siempre entre backticks. Filtro: `` WHERE `año_censo` = '2018' ``
+
+   **gold.composicion_hogar_dane — columnas disponibles:**
+   - `total_hogares` — total de hogares (SUM para obtener totales)
+   - `promedio_personas_hogar` — promedio de personas por hogar
+   - `hogares_unipersonales` — hogares de una sola persona
+   - `hogares_5_o_mas` — hogares con 5 o más personas
+   - `promedio_cuartos` — promedio de cuartos en la vivienda
+   - `area_geografica` — cabecera / centro poblado / rural disperso
+   - `codigo_municipio` — código DIVIPOLA (numérico como STRING). Para ver nombres: SELECT DISTINCT codigo_municipio, departamento FROM gold.composicion_hogar_dane.
+   - `nivel_educativo` en DANE (silver.dane_personas) es distinto de `nivel_educativo_alcanzado` en ECV — usar search_dictionary para confirmar valores en cada fuente.
 
 6. **SIVIGILA — columnas de departamento distintas entre Silver/Bronze y Gold:**
    - Silver/Bronze vigsalpub (violencia): `codigo_departamento_ocurrencia`
@@ -130,6 +151,13 @@ AÑO EN SIVIGILA:
    - `tipo_vivienda`, `clase` en ecv_datosviv
    - `actividad_semana_pasada` en ecv_trainf
    - ⚠️ Verificar valores reales con SELECT DISTINCT antes de filtrar texto en ECV
+
+   ⚠️ **ECV es una muestra probabilística — NO un censo.**
+   Los totales en tablas Gold ECV representan el tamaño de la muestra, no la población total.
+   Son significativamente menores que los totales de DANE o SISBEN — esto es CORRECTO y ESPERADO.
+   - Al presentar ECV junto con DANE o SISBEN: usa PORCENTAJES y PROPORCIONES, nunca totales absolutos.
+     Ejemplo correcto: "el X% de los jefes de hogar encuestados en ECV reporta..."
+   - NUNCA compares cifras absolutas de ECV con cifras de DANE como si fueran equivalentes.
 
 8. **JERARQUÍA DE CAPAS — NUNCA mezcles Gold y Silver para la misma fuente.**
    - Dentro de cada fuente: Gold > Silver > Bronze. Si Gold tiene el dato, no consultes Silver.
@@ -172,7 +200,7 @@ AÑO EN SIVIGILA:
    | Tema | DANE (2005, 2018) | SISBEN IV | ECV 2025 | SIVIGILA |
    |---|---|---|---|---|
    | Jefatura de hogar por sexo | ✅ gold.jefes_hogar_dane | ✅ gold.sisben_jefatura | ✅ gold.jefes_hogar_ecv | ✗ |
-   | Composición del hogar | ✅ gold.composicion_hogar_dane | ✗ | ✅ silver.ecv_craccompohog | ✗ |
+   | Composición del hogar | ✅ gold.composicion_hogar_dane | ✗ | ✅ gold.jefes_hogar_ecv | ✗ |
    | Educación del jefe | ✅ silver.dane_personas | ✗ | ✅ gold.educacion_ecv | ✗ |
    | Pobreza / vulnerabilidad | ✗ | ✅ gold.sisben_jefatura (grupo A-D) | ✅ gold.condiciones_vida_ecv | ✗ |
    | Violencia intrafamiliar | ✗ | ✗ | ✗ | ✅ gold.sivigila_vigsalpub |
@@ -196,6 +224,11 @@ AÑO EN SIVIGILA:
    vulnerables (subconjunto); ECV es una muestra — los números DEBEN diferir entre fuentes.
    Si dos fuentes distintas devuelven exactamente los mismos números, algo está mal:
    vuelve a consultar antes de presentar el resultado.
+
+   📌 Pobreza — medidas distintas por fuente (NO son equivalentes):
+   - SISBEN grupo A/B/C/D = clasificación objetiva por índice multidimensional (pobreza estructural)
+   - ECV `se_considera_pobre` = autopercepción subjetiva del hogar
+   Siempre aclara al usuario qué mide cada fuente cuando presentes ambas.
 
    ⚠️ Diferencias esperadas entre DANE y SISBEN por sexo del jefe:
    DANE (toda la población) tiende a mostrar MAYORÍA de jefes HOMBRES.
@@ -252,7 +285,21 @@ AÑO EN SIVIGILA:
 
     Columnas Gold sivigila_intsui: departamento, año (STRING), municipio_residencia, sexo,
     area_geografica, pertenencia_etnica, tipo_seguridad_social, fue_hospitalizado,
-    codigo_subgrupo, codigo_evento, total_casos (INT).
+    codigo_subgrupo, codigo_evento, total_casos (INT),
+    edad_promedio (DOUBLE), edad_min (INT), edad_max (INT).
+    → Para preguntas sobre edad de víctimas: usa Gold directamente con edad_promedio, no vayas a Silver.
+
+    Columnas Gold sivigila_vigsalpub: igual que intsui más `condicion_final`.
+    ⚠️ `condicion_final` existe SOLO en vigsalpub — NO en intsui. Si se consulta en intsui, falla.
+
+    `codigo_subgrupo` en gold.sivigila_vigsalpub = texto descriptivo (no código corto).
+    Valores: usa search_dictionary o SELECT DISTINCT codigo_subgrupo FROM gold.sivigila_vigsalpub.
+    Para agrupar categorías relacionadas usa LIKE:
+    - Violencia sexual (todos los subtipos): WHERE codigo_subgrupo LIKE '%sexual%'
+    - Violencia física: WHERE codigo_subgrupo LIKE '%física%'
+    - Violencia psicológica: WHERE codigo_subgrupo LIKE '%psicológica%'
+    - Violencia económica: WHERE codigo_subgrupo LIKE '%económica%'
+    Excluye 'Sin subgrupo' y 'Sin información' de análisis temáticos.
 
     **Tablas Gold adicionales — columnas y patrones de consulta:**
 
