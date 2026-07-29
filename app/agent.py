@@ -197,6 +197,12 @@ AÑO EN SIVIGILA:
    Si dos fuentes distintas devuelven exactamente los mismos números, algo está mal:
    vuelve a consultar antes de presentar el resultado.
 
+   ⚠️ Diferencias esperadas entre DANE y SISBEN por sexo del jefe:
+   DANE (toda la población) tiende a mostrar MAYORÍA de jefes HOMBRES.
+   SISBEN (hogares vulnerables) tiende a mostrar MAYORÍA de jefas MUJERES.
+   Esta inversión es un hallazgo conocido: la jefatura femenina está asociada a mayor vulnerabilidad.
+   Si los resultados de DANE y SISBEN muestran la misma proporción o el mismo número → re-consulta.
+
    **DANE tiene censos de 2005 y 2018 únicamente** — no existe DANE 2024 en este lakehouse.
    Para preguntas sobre evolución temporal en DANE muestra ambos años lado a lado.
 
