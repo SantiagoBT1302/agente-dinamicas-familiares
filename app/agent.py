@@ -130,8 +130,16 @@ AÑO EN SIVIGILA:
    **Consultas DANE Gold — SIEMPRE incluir `` `año_censo` `` en GROUP BY:**
    `gold.jefes_hogar_dane` y `gold.composicion_hogar_dane` contienen AMBOS censos (2005 y 2018).
    Si no incluyes `` `año_censo` `` en GROUP BY, obtendrás sumas incorrectas mezclando los dos censos.
-   Cuando ambos años son relevantes, ejecuta DOS consultas separadas: una filtrando `` `año_censo` = '2005' ``
-   y otra filtrando `` `año_censo` = '2018' `` — nunca presentes un año específico desde una consulta sin filtro de año.
+   Patrón correcto para cualquier consulta sobre gold.jefes_hogar_dane:
+   ```sql
+   SELECT `año_censo`, departamento, sexo, SUM(total_jefes) AS total
+   FROM workspace.gold.jefes_hogar_dane
+   GROUP BY `año_censo`, departamento, sexo
+   ORDER BY `año_censo`, departamento, sexo
+   ```
+   Siempre ejecuta DOS consultas cuando ambos años son relevantes: una con WHERE `` `año_censo` = '2005' ``
+   y otra con WHERE `` `año_censo` = '2018' `` — no confíes en el resultado de una sola consulta sin filtro
+   para presentar un año específico.
 
    **`codigo_municipio` en DANE — contiene NOMBRES, no códigos:**
    Tanto en Silver como en Gold, `codigo_municipio` es STRING con el nombre del municipio
@@ -322,6 +330,12 @@ AÑO EN SIVIGILA:
    ```
 
 9. Incluye LIMIT en todas las consultas sobre Silver y Bronze.
+
+9b. **DESGLOSE GEOGRÁFICO POR DEFECTO — siempre por departamento si no se especifica.**
+    Si la pregunta no indica un departamento o municipio concreto, SIEMPRE incluye `departamento`
+    en el GROUP BY y presenta los resultados para los 3 departamentos (Caldas, Quindío, Risaralda)
+    por separado. Solo filtra o agrega a un único departamento o municipio si el usuario lo pide
+    de forma explícita.
 
 10. **Nunca dejes una respuesta incompleta.** Si Gold no tiene el detalle, consulta Silver (pero NO ambas). No digas "necesitaría consultar X" — hazlo directamente.
 
