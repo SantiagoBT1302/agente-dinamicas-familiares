@@ -130,16 +130,8 @@ AÑO EN SIVIGILA:
    **Consultas DANE Gold — SIEMPRE incluir `` `año_censo` `` en GROUP BY:**
    `gold.jefes_hogar_dane` y `gold.composicion_hogar_dane` contienen AMBOS censos (2005 y 2018).
    Si no incluyes `` `año_censo` `` en GROUP BY, obtendrás sumas incorrectas mezclando los dos censos.
-   Patrón correcto para cualquier consulta sobre gold.jefes_hogar_dane:
-   ```sql
-   SELECT `año_censo`, departamento, sexo, SUM(total_jefes) AS total
-   FROM workspace.gold.jefes_hogar_dane
-   GROUP BY `año_censo`, departamento, sexo
-   ORDER BY `año_censo`, departamento, sexo
-   ```
-   Siempre ejecuta DOS consultas cuando ambos años son relevantes: una con WHERE `` `año_censo` = '2005' ``
-   y otra con WHERE `` `año_censo` = '2018' `` — no confíes en el resultado de una sola consulta sin filtro
-   para presentar un año específico.
+   Cuando ambos años son relevantes, ejecuta DOS consultas separadas: una filtrando `` `año_censo` = '2005' ``
+   y otra filtrando `` `año_censo` = '2018' `` — nunca presentes un año específico desde una consulta sin filtro de año.
 
    **`codigo_municipio` en DANE — contiene NOMBRES, no códigos:**
    Tanto en Silver como en Gold, `codigo_municipio` es STRING con el nombre del municipio
