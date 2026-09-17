@@ -111,6 +111,25 @@ def health():
         "db_error": DB_ERROR,   # muestra el error exacto si db_history falla
     }
 
+@app.get("/warmup")
+def warmup():
+    """Mantiene el Serverless Warehouse de Databricks activo.
+    Llamado cada 10 minutos por Cloud Scheduler para evitar cold starts."""
+    try:
+        from databricks import sql as dbsql
+        with dbsql.connect(
+            server_hostname=settings.databricks_host,
+            http_path=settings.databricks_http_path,
+            access_token=settings.databricks_token,
+        ) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+        logger.info("Warmup Databricks: OK")
+        return {"status": "warm", "databricks": "ok"}
+    except Exception as e:
+        logger.warning(f"Warmup Databricks falló: {e}")
+        return {"status": "error", "detail": str(e)}
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(
     request: ChatRequest,
