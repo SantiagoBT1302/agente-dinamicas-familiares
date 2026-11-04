@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     # Databricks
     databricks_host: str
     databricks_token: str
-    databricks_http_path: str = "/sql/1.0/warehouses/bd303a51ca7560aa"
+    databricks_http_path: str  # sin default — debe venir del .env
     databricks_catalog: str = "workspace"
 
     # App

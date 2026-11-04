@@ -1,0 +1,46 @@
+steps:
+  # 1. Build de la imagen Docker
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/agente-dinamicas-familiares:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/agente-dinamicas-familiares:latest'
+      - '.'
+    dir: 'agente'
+
+  # 2. Push de la imagen
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/agente-dinamicas-familiares:$COMMIT_SHA'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/agente-dinamicas-familiares:latest'
+
+  # 3. Deploy a Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'agente-dinamicas-familiares'
+      - '--image=gcr.io/$PROJECT_ID/agente-dinamicas-familiares:$COMMIT_SHA'
+      - '--platform=managed'
+      - '--region=us-central1'
+      - '--allow-unauthenticated'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--timeout=300'
+      - '--set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest,DATABRICKS_HOST=DATABRICKS_HOST:latest,DATABRICKS_TOKEN=DATABRICKS_TOKEN:latest,DATABRICKS_HTTP_PATH=DATABRICKS_HTTP_PATH:latest'
+      - '--project=$PROJECT_ID'
+
+images:
+  - 'gcr.io/$PROJECT_ID/agente-dinamicas-familiares:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/agente-dinamicas-familiares:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
