@@ -2,8 +2,12 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.schema import HumanMessage, AIMessage
-from langchain.callbacks.tracers import LangChainTracer
-from langsmith import Client
+try:
+    from langchain.callbacks.tracers import LangChainTracer
+    from langsmith import Client
+    LANGSMITH_OK = True
+except ImportError:
+    LANGSMITH_OK = False
 from app.tools import TOOLS
 from app.config import settings
 import logging
@@ -480,7 +484,7 @@ def build_agent() -> AgentExecutor:
 
     callbacks = []
     langsmith_key = os.getenv("LANGSMITH_API_KEY")
-    if langsmith_key:
+    if LANGSMITH_OK and langsmith_key:
         try:
             langsmith_client = Client(api_key=langsmith_key)
             tracer = LangChainTracer(
