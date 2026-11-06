@@ -478,11 +478,19 @@ def build_agent() -> AgentExecutor:
 
     agent = create_tool_calling_agent(llm, TOOLS, prompt)
 
-    langsmith_client = Client(api_key=os.getenv("LANGSMITH_API_KEY"))
-    tracer = LangChainTracer(
-        project_name="dinamicas-familiares-eje-cafetero",
-        client=langsmith_client,
-    )
+    callbacks = []
+    langsmith_key = os.getenv("LANGSMITH_API_KEY")
+    if langsmith_key:
+        try:
+            langsmith_client = Client(api_key=langsmith_key)
+            tracer = LangChainTracer(
+                project_name="dinamicas-familiares-eje-cafetero",
+                client=langsmith_client,
+            )
+            callbacks.append(tracer)
+            logger.info("LangSmith tracer activado.")
+        except Exception as e:
+            logger.warning(f"LangSmith no disponible: {e}")
 
     logger.info(f"Agente inicializado con modelo {settings.openai_model}.")
     return AgentExecutor(
@@ -494,7 +502,7 @@ def build_agent() -> AgentExecutor:
         handle_parsing_errors=True,
         return_intermediate_steps=False,
         early_stopping_method="force",
-        callbacks=[tracer],
+        callbacks=callbacks,
     )
 
 
