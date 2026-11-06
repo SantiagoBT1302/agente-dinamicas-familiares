@@ -1,4 +1,4 @@
-chivos defrom databricks import sql
+from databricks import sql
 from langchain.tools import tool
 from app.config import settings
 import logging
